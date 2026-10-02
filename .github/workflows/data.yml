@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 John Luke NIKABOU (LucNIK)
 
-# Downloads DVF, rebuilds the clean dataset and measures the reference estimators.
+# Downloads DVF, rebuilds the clean dataset, measures the references and trains the model.
 # Runs on demand and after each DVF publication (April and October).
 name: Data
 
@@ -23,7 +23,7 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     env:
       DEPS: ${{ github.event.inputs.departements || 'all' }}
       YEARS: ${{ github.event.inputs.years || '2021-2025' }}
@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      - name: Fetch, build and evaluate
+      - name: Fetch, build, evaluate and train
         run: python -m valia all --years "$YEARS" --departements "$DEPS"
       - uses: actions/upload-artifact@v4
         with:

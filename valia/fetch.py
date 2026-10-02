@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .config import DEPARTEMENTS, EXCLUDED_DEPARTEMENTS, RAW_DIR, SOURCE_URL
 
-USER_AGENT = "valia/0.1 (+https://github.com/LucNIK/valia)"
+USER_AGENT = "valia/0.2 (+https://github.com/LucNIK/valia)"
 
 
 def parse_years(spec: str) -> list[int]:

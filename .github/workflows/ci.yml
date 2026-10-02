@@ -23,5 +23,9 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check --output-format=github .
-      - name: Test
+      - name: Test (LightGBM)
         run: pytest -q
+      - name: Test (scikit-learn fallback)
+        run: pytest -q tests/test_model.py
+        env:
+          VALIA_BACKEND: sklearn

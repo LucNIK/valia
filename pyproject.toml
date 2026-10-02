@@ -7,13 +7,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valia"
-version = "0.1.0"
+version = "0.2.0"
 description = "French property price estimation from public DVF data, with honest chronological evaluation"
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "John Luke NIKABOU (LucNIK)", email = "lukepulanka@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["pandas>=2.2", "numpy>=1.26", "pyarrow>=16"]
+dependencies = ["pandas>=2.2", "numpy>=1.26", "pyarrow>=16", "scikit-learn>=1.5", "lightgbm>=4.3", "joblib>=1.4"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff==0.15.0"]  # ruff pinned: the lint result must not change on its own

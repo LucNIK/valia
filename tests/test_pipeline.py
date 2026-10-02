@@ -110,11 +110,15 @@ class CliTest(unittest.TestCase):
             os.chdir(tmp)
             try:
                 self.assertEqual(main(["build", "--years", "2023-2025", "--departements", "75,69,23",
-                                       "--raw", str(raw), "--clean", "clean"]), 0)
+                                       "--raw", str(raw), "--clean", "clean", "--no-enrich"]), 0)
                 self.assertEqual(main(["baseline", "--clean", "clean"]), 0)
                 report = json.loads(Path("reports/baseline.json").read_text())
                 self.assertEqual(report["test_year"], 2025)
                 self.assertTrue(Path("reports/baseline.md").read_text().startswith("# Baseline"))
+                self.assertEqual(main(["train", "--clean", "clean", "--fast"]), 0)
+                model = json.loads(Path("reports/model.json").read_text())
+                self.assertIn("coverage_pct", model["model"]["overall"])
+                self.assertTrue(Path("reports/intervals.json").exists())
             finally:
                 os.chdir(cwd)
 

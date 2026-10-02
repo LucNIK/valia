@@ -21,7 +21,7 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | Version | Scope | Exit criterion | State |
 | --- | --- | --- | --- |
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
-| v0.2 | Open-data enrichment, gradient-boosted model, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **Next** |
+| v0.2 | Open-data enrichment, gradient-boosted model anchored on recent prices, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **In progress** — awaiting the first nationwide training run |
 | v0.3 | Web MVP: address, estimate, range, 5 comparable sales, Method page | Browser and Python agree on 1 000 homes | Planned |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
 
@@ -50,7 +50,8 @@ cat reports/baseline.md
 | `python -m valia fetch` | Downloads the geolocated DVF files (one per year and département), with a local cache |
 | `python -m valia build` | Keeps single-dwelling sales, adds leakage-free neighbourhood features, writes `data/clean/sales` |
 | `python -m valia baseline` | Measures the reference estimators on the latest full year, writes `reports/baseline.{json,md}` |
-| `python -m valia all` | The three steps in a row |
+| `python -m valia train` | Trains the model, calibrates the 80 % intervals, writes `reports/model.{json,md}` and the model files |
+| `python -m valia all` | The four steps in a row |
 
 Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2025`.
 
@@ -63,8 +64,15 @@ Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2
    Surfaces, prices and price per m² must be plausible. Every rule is counted in `reports/funnel.json`.
 3. **Features** — for each sale, the median price per m² of the earlier sales in its ~550 m cell and
    in its commune, over the previous 365 days.
-4. **Reference estimators** — the commune median and the neighbourhood prior, measured on the latest
-   full year. The v0.2 model must beat the commune median by 25 %.
+4. **Enrichment** — commune population, density, INSEE density grid and level of services
+   ("Communes et villes de France", data.gouv.fr), and the distance to the nearest railway station
+   (SNCF). Optional by design: if a source is unavailable, its columns stay empty and the model still runs.
+5. **Reference estimators** — the commune median and the neighbourhood prior, measured on the latest
+   full year. The model must beat the commune median by 25 %.
+6. **Model** — gradient boosting (LightGBM) predicting the *gap* to an anchor, the recent price of the
+   neighbourhood: trees cannot extrapolate in time, the anchor follows the market without leakage.
+   Trained on every year but its last three months, calibrated on those three months (split conformal,
+   per segment and property type), evaluated on the latest full year.
 
 ## Data and licence
 

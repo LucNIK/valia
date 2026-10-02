@@ -48,9 +48,22 @@ Median absolute percentage error on the sale price (lower is better), and share 
 Neither reference wins everywhere: recent neighbourhood prices are better in cities and for apartments,
 the commune median is better in rural areas and for houses, where ~550 m cells hold too few sales.
 
+## Model (v0.2)
+
+*Pending the first nationwide training run.*
+
+- Target: log price per m²; prediction = recent neighbourhood anchor + learned gap.
+- Inputs: property type, surface, rooms, m² per room, land, coordinates, month, anchor, neighbourhood and
+  commune priors with their sample sizes, commune population and density, INSEE density grid, level of
+  services, distance to the nearest station.
+- Intervals: split conformal at 80 %, calibrated on the last three months of the training years, one
+  quantile per segment × property type (global quantile for groups under 200 sales).
+
 ## Known limits
 
 - DVF has no floor, energy rating (DPE), view or condition: two identical flats in the same building
   can sell for very different prices, and the range must say so.
 - Rural communes have few sales; the range is wider there.
 - Prices are past transactions; the model estimates, it does not forecast.
+- Household income is not used yet: the only simple open file per commune dates from 2014, too old to
+  describe today's market.
