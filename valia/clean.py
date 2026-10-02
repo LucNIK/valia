@@ -16,8 +16,15 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    ANCILLARY_TYPE, COMMERCIAL_TYPE, DWELLING_TYPES, MAX_PRICE_M2, MAX_ROOMS, MAX_SURFACE_M2,
-    MIN_PRICE_EUR, MIN_PRICE_M2, MIN_SURFACE_M2,
+    ANCILLARY_TYPE,
+    COMMERCIAL_TYPE,
+    DWELLING_TYPES,
+    MAX_PRICE_M2,
+    MAX_ROOMS,
+    MAX_SURFACE_M2,
+    MIN_PRICE_EUR,
+    MIN_PRICE_M2,
+    MIN_SURFACE_M2,
 )
 
 RAW_COLUMNS = [
@@ -60,7 +67,7 @@ def clean(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     per_mut["dwellings"] = dwellings.reindex(per_mut.index).fillna(0).astype(int)
     keep = per_mut[(per_mut["dwellings"] == 1) & ~per_mut["commercial"] & ~per_mut["other"]
                    & (per_mut["prices"] == 1)].index
-    funnel["after_single_dwelling"] = int(len(keep))
+    funnel["after_single_dwelling"] = len(keep)
     df = df[df["id_mutation"].isin(keep)]
 
     land = (df.drop_duplicates(["id_mutation", "id_parcelle", "surface_terrain"])
@@ -92,7 +99,7 @@ def clean(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     out = out[plausible].copy()
     out["price_m2"] = out["price"] / out["surface"]
     out = out[out["price_m2"].between(MIN_PRICE_M2, MAX_PRICE_M2)].copy()
-    funnel["after_plausibility"] = int(len(out))
+    funnel["after_plausibility"] = len(out)
 
     out["year"] = out["date"].dt.year
     out["month"] = out["date"].dt.month

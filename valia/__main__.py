@@ -66,8 +66,8 @@ def cmd_baseline(args) -> None:
 
 def to_markdown(report: dict) -> str:
     lines = [f"# Baseline — test year {report['test_year']}", "",
-             f"Trained on {report['train_years']} ({report['train_sales']:,} sales). "
-             f"Model target: MAE(log) ≤ {report['target_mae_log']}.", ""]
+             (f"Trained on {report['train_years']} ({report['train_sales']:,} sales). "
+              f"Model target: MAE(log) ≤ {report['target_mae_log']}."), ""]
     for name, entry in report["estimators"].items():
         lines += [f"## {name}", "", "| Scope | Sales | MdAPE % | Within 10 % | MAE € |",
                   "| --- | ---: | ---: | ---: | ---: |"]

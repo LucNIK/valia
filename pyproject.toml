@@ -16,7 +16,7 @@ requires-python = ">=3.12"
 dependencies = ["pandas>=2.2", "numpy>=1.26", "pyarrow>=16"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff==0.15.0"]  # ruff pinned: the lint result must not change on its own
 
 [tool.setuptools.packages.find]
 include = ["valia*"]
@@ -24,6 +24,10 @@ include = ["valia*"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint]
+# Explicit rule set: a new ruff release must never change what the CI checks.
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "ISC", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

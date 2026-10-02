@@ -70,7 +70,7 @@ def market(years=(2021, 2022, 2023, 2024, 2025), per_year=400, seed=7) -> pd.Dat
     for year in years:
         for i in range(per_year):
             commune = rng.choice(list(COMMUNES))
-            dep, clat, clon, base = COMMUNES[commune]
+            _dep, clat, clon, base = COMMUNES[commune]
             kind = "Maison" if commune == "23096" or rng.random() < 0.3 else "Appartement"
             surface = float(rng.integers(25, 160))
             ppm2 = base * (1.04 ** (year - 2021)) * (surface / 70) ** -0.12 * np.exp(rng.normal(0, 0.12))

@@ -69,7 +69,7 @@ def metrics(log_pred: pd.Series, frame: pd.DataFrame) -> dict:
     err = (pred_price - frame["price"]).abs()
     ape = err / frame["price"]
     return {
-        "sales": int(len(frame)),
+        "sales": len(frame),
         "mae_eur": round(float(err.mean()), 0),
         "mdape_pct": round(float(ape.median() * 100), 2),
         "mape_pct": round(float(ape.mean() * 100), 2),
@@ -85,7 +85,7 @@ def evaluate(sales: pd.DataFrame, test_year: int | None = None) -> dict:
     report: dict = {
         "test_year": split.test_year,
         "train_years": sorted(int(y) for y in split.train["year"].unique()),
-        "train_sales": int(len(split.train)),
+        "train_sales": len(split.train),
         "estimators": {},
     }
     for name, estimator in estimators.items():
