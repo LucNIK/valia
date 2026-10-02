@@ -1,0 +1,76 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 John Luke NIKABOU (LucNIK) -->
+
+<div align="center">
+
+# Valia
+
+**What is this home worth — and how sure are we?**
+
+Property price estimation for the whole of France, built on the public DVF sales records.
+A price, a calibrated range, the reasons behind it and the closest real sales — computed in the browser, with no server.
+
+`v0.1 · data pipeline` · [Model card](docs/model-card.md) · MIT
+
+</div>
+
+---
+
+## Status
+
+| Version | Scope | Exit criterion | State |
+| --- | --- | --- | --- |
+| **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **In progress** |
+| v0.2 | LightGBM model, chronological validation, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | Planned |
+| v0.3 | Web MVP: address, estimate, range, 5 comparable sales, Method page | Browser and Python agree on 1 000 homes | Planned |
+| v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
+
+## Why it is different
+
+- **Measured honestly.** Every number is computed on sales that happened *after* the training data —
+  never on a shuffled split. Results are reported separately for Paris, large cities, mid-size cities
+  and rural France, because a national average hides where a model fails.
+- **No leakage, by construction.** Neighbourhood features only use sales that happened strictly before
+  the one being described, over the previous 365 days. Tests prove it.
+- **Uncertainty you can see.** From v0.2, every estimate comes with a range calibrated by conformal
+  prediction, and its real coverage is published.
+- **Respectful of the data licence.** No exact address is ever displayed and no sale is indexable by
+  search engines (see [SECURITY.md](SECURITY.md)).
+
+## Quick start
+
+```bash
+uv venv && uv pip install -e ".[dev]"
+uv run python -m valia all --years 2023-2025 --departements 75   # Paris only, ~1 minute
+cat reports/baseline.md
+```
+
+| Command | What it does |
+| --- | --- |
+| `python -m valia fetch` | Downloads the geolocated DVF files (one per year and département), with a local cache |
+| `python -m valia build` | Keeps single-dwelling sales, adds leakage-free neighbourhood features, writes `data/clean/sales` |
+| `python -m valia baseline` | Measures the reference estimators on the latest full year, writes `reports/baseline.{json,md}` |
+| `python -m valia all` | The three steps in a row |
+
+Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2025`.
+
+## Pipeline
+
+1. **Fetch** — [DVF géolocalisées](https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres-geolocalisees)
+   (Etalab), five rolling years, all départements except Alsace-Moselle and Mayotte, which DVF does not cover.
+2. **Clean** — a DVF sale spans several rows. A sale is kept only when it is a plain sale (`Vente`) of
+   exactly one apartment or one house, possibly with a garage or cellar, and nothing commercial.
+   Surfaces, prices and price per m² must be plausible. Every rule is counted in `reports/funnel.json`.
+3. **Features** — for each sale, the median price per m² of the earlier sales in its ~550 m cell and
+   in its commune, over the previous 365 days.
+4. **Reference estimators** — the commune median and the neighbourhood prior, measured on the latest
+   full year. The v0.2 model must beat the commune median by 25 %.
+
+## Data and licence
+
+Data: *Demandes de valeurs foncières géolocalisées*, Etalab / data.gouv.fr, under the
+[Licence Ouverte 2.0](https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/).
+DVF covers declared sale prices only: it contains neither the floor, the energy rating nor the
+condition of a home, and the model never pretends otherwise.
+
+Code: [MIT](LICENSE) © 2026 John Luke NIKABOU (LucNIK).

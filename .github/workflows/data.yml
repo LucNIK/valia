@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 John Luke NIKABOU (LucNIK)
+
+# Downloads DVF, rebuilds the clean dataset and measures the reference estimators.
+# Runs on demand and after each DVF publication (April and October).
+name: Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      departements:
+        description: "'all' or a list such as 75,69,13"
+        default: "all"
+      years:
+        description: "Years to download, e.g. 2021-2025"
+        default: "2021-2025"
+  schedule:
+    - cron: "17 6 20 4,10 *"   # the 20th of April and October, after the semi-annual DVF release
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DEPS: ${{ github.event.inputs.departements || 'all' }}
+      YEARS: ${{ github.event.inputs.years || '2021-2025' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv venv && uv pip install -e .
+      - name: Fetch, build and evaluate
+        run: uv run python -m valia all --years "$YEARS" --departements "$DEPS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: valia-reports
+          path: reports/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: valia-clean-sales
+          path: data/clean/
+          retention-days: 30

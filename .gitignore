@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 John Luke NIKABOU (LucNIK)
+
+__pycache__/
+*.pyc
+.venv/
+data/
+reports/
+.pytest_cache/
+.ruff_cache/
