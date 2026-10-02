@@ -40,8 +40,8 @@ A price, a calibrated range, the reasons behind it and the closest real sales â€
 ## Quick start
 
 ```bash
-uv venv && uv pip install -e ".[dev]"
-uv run python -m valia all --years 2023-2025 --departements 75   # Paris only, ~1 minute
+python -m pip install -e ".[dev]"
+python -m valia all --years 2023-2025 --departements 75   # Paris only, ~1 minute
 cat reports/baseline.md
 ```
 

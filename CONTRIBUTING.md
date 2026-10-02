@@ -22,7 +22,7 @@ git config core.hooksPath .githooks
 ## Development
 
 ```bash
-uv venv && uv pip install -e ".[dev]"
-uv run pytest -q
-uv run python -m valia all --years 2023-2025 --departements 75   # one département, three years
+python -m pip install -e ".[dev]"
+ruff check . && pytest -q
+python -m valia all --years 2023-2025 --departements 75   # one département, three years
 ```

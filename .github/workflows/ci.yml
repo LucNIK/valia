@@ -16,7 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
-      - run: uv venv && uv pip install -e ".[dev]"
-      - run: uv run ruff check .
-      - run: uv run pytest -q
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check --output-format=github .
+      - name: Test
+        run: pytest -q
