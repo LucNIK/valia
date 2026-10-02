@@ -10,7 +10,7 @@
 Property price estimation for the whole of France, built on the public DVF sales records.
 A price, a calibrated range, the reasons behind it and the closest real sales — computed in the browser, with no server.
 
-`v0.1 · data pipeline` · [Model card](docs/model-card.md) · MIT
+`v0.1 · 4.26 M sales · data pipeline` · [Model card](docs/model-card.md) · MIT
 
 </div>
 
@@ -20,8 +20,8 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 
 | Version | Scope | Exit criterion | State |
 | --- | --- | --- | --- |
-| **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **In progress** |
-| v0.2 | LightGBM model, chronological validation, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | Planned |
+| **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
+| v0.2 | Open-data enrichment, gradient-boosted model, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **Next** |
 | v0.3 | Web MVP: address, estimate, range, 5 comparable sales, Method page | Browser and Python agree on 1 000 homes | Planned |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
 

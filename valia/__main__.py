@@ -58,6 +58,9 @@ def cmd_baseline(args) -> None:
     sales = load_table(Path(args.clean) / SALES.name)
     report = evaluate(sales, args.test_year)
     report["source"] = SOURCE_NAME
+    deps = sorted(sales["dep"].unique())
+    listed = ", ".join(deps[:8]) + ("…" if len(deps) > 8 else "")
+    report["scope"] = "France" if len(deps) > 90 else f"Ensemble ({listed})"
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     (REPORTS_DIR / "baseline.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
     (REPORTS_DIR / "baseline.md").write_text(to_markdown(report), encoding="utf-8")
@@ -71,7 +74,7 @@ def to_markdown(report: dict) -> str:
     for name, entry in report["estimators"].items():
         lines += [f"## {name}", "", "| Scope | Sales | MdAPE % | Within 10 % | MAE € |",
                   "| --- | ---: | ---: | ---: | ---: |"]
-        rows = [("France", entry["overall"])]
+        rows = [(report.get("scope", "France"), entry["overall"])]
         rows += [(s, entry["by_segment"][s]) for s in SEGMENTS if s in entry["by_segment"]]
         rows += list(entry["by_type"].items())
         for label, m in rows:
