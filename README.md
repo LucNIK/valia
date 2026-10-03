@@ -10,7 +10,7 @@
 Property price estimation for the whole of France, built on the public DVF sales records.
 A price, a calibrated range, the reasons behind it and the closest real sales — computed in the browser, with no server.
 
-`v0.3 · 4.26 M sales · web app` · [Model card](docs/model-card.md) · MIT
+`v0.3 · 4.26 M sales · web app` · [Live app](https://lucnik.github.io/valia/) · [Model card](docs/model-card.md) · MIT
 
 </div>
 
@@ -22,7 +22,7 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | --- | --- | --- | --- |
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
 | **v0.2** | Open-data enrichment, gradient-boosted model anchored on comparable sales, conformal intervals per segment | Beat both references in every segment; 80 % intervals cover 78–82 % of prices (target −25 % vs commune median) | **Done** — −18.9 % error vs commune median, better in every segment, 81.3 % coverage ✅ |
-| **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Ready** — parity tested in CI; the real 1,000-home check runs before each publication |
+| **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Done** — 15.8 % median error, 81.3 % coverage; browser = Python on 1,000 real homes |
 | v0.4 | Building data (BDNB): energy rating, construction year | Close the gap to −25 % | Planned |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
 | v1.x | Accounts, saved homes, price alerts | — | Later |

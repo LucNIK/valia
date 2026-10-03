@@ -105,11 +105,30 @@ cannot see — condition, floor, energy rating — which v0.4 addresses with the
   LightGBM's exact decision rules (float32 inputs, missing-value routing).
 - An estimate uses the same features as training, as if the home were sold on the first day after the
   data ends. `valia/inference.py` is the reference; the JavaScript mirrors it line by line.
-- **Exit criterion:** browser and Python agree on 1,000 homes (features, price and range to 10⁻⁹),
-  checked by the Data workflow on every release before the site is published, and on a synthetic market
-  by CI on every push.
 - Published data: per-commune and per-~2.2 km tile priors, and the sales of the last 24 months with
   their position rounded to ~100 m and their date to the month; no address, parcel or identifier.
+
+### Run 3 — v0.3.0 web model (3 October 2026)
+
+Same data and split as runs 1 and 2. Training time: 2 min 46 s. Model file: 800 trees, 49,600 splits,
+1.3 MB (0.68 MB compressed) instead of ~70 MB for the full model.
+
+| Scope | Test sales | MAE(log) | MdAPE | Within 10 % | 80 % range coverage | Range width |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **France** | 800,229 | **0.2325** | **15.79 %** | 33.7 % | **81.3 %** ✅ | 73.7 % |
+| Paris | 28,884 | 0.1945 | 12.39 % | 41.8 % | 81.1 % | 55.0 % |
+| Large cities | 317,128 | 0.1997 | 14.03 % | 37.4 % | 81.2 % | 59.2 % |
+| Mid-size cities | 213,080 | 0.2204 | 14.94 % | 35.4 % | 81.4 % | 77.2 % |
+| Rural | 241,137 | 0.2910 | 20.36 % | 26.4 % | 81.4 % | 100.2 % |
+| Apartments | 352,727 | 0.1899 | 13.18 % | 39.6 % | 81.3 % | 59.2 % |
+| Houses | 447,502 | 0.2661 | 18.38 % | 29.1 % | 81.3 % | 77.2 % |
+
+−18.4 % error vs the commune median (full model: −18.9 %): the compact model costs 0.11 point of MdAPE
+for a file 50 times smaller. Top features by gain: surface, land, anchor, comparables, months.
+
+**Exit criterion met:** on the same run, the browser code reproduced the Python reference on 1,000 homes
+across France (features, price and range to 10⁻⁹) before the site was published to GitHub Pages.
+The same check runs on a synthetic market in CI on every push.
 
 ## Known limits
 
