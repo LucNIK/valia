@@ -100,7 +100,14 @@ input[type="text"], input[type="number"], input[type="search"] {
   -moz-appearance: textfield; appearance: textfield;
 }
 input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-input:focus { outline: none; border-color: var(--accent); }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 10px; padding: 11px 13px; appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+.row.building { grid-template-columns: repeat(2, 1fr); }
+.hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); min-height: 1em; }
+.hint.found { color: var(--accent); }
 .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .row > div[hidden] { display: none; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr 1fr; } }

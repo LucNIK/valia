@@ -76,6 +76,7 @@ def market(years=(2021, 2022, 2023, 2024, 2025), per_year=400, seed=7) -> pd.Dat
             ppm2 = base * (1.04 ** (year - 2021)) * (surface / 70) ** -0.12 * np.exp(rng.normal(0, 0.12))
             date = pd.Timestamp(year, 1, 1) + pd.Timedelta(days=int(rng.integers(0, 365)))
             rows.append(row(f"m{year}-{i}", date.date().isoformat(), round(ppm2 * surface, -2), commune,
+                            parcel=f"000AB{int(rng.integers(0, 80)):04d}",
                             type_local=kind, surface=surface, rooms=max(1, int(surface // 25)),
                             land=float(rng.integers(200, 2_000)) if kind == "Maison" else None,
                             lat=clat + rng.normal(0, 0.01), lon=clon + rng.normal(0, 0.01)))
@@ -117,3 +118,21 @@ def random_forest(features: list[str], n_trees: int = 30, depth: int = 4, seed: 
                   decision=np.array(decision, dtype=np.uint8), threshold=np.array(threshold, dtype=np.float64),
                   left=np.array(left, dtype=np.int32), right=np.array(right, dtype=np.int32),
                   value=np.array(value, dtype=np.float64))
+
+
+def bdnb_parcels(sales: pd.DataFrame, seed: int = 5) -> pd.DataFrame:
+    """Building data for most parcels of a synthetic market, in the shape bdnb.parcels_from_tables returns."""
+    rng = np.random.default_rng(seed)
+    parcels = sorted(sales["parcel"].dropna().unique())
+    parcels = [p for p in parcels if rng.random() < 0.85]
+    n = len(parcels)
+    return pd.DataFrame({
+        "parcel": parcels,
+        "dpe_class": np.where(rng.random(n) < 0.8, rng.integers(1, 8, n), np.nan),
+        "dpe_date": pd.to_datetime("2021-07-01") + pd.to_timedelta(rng.integers(0, 1500, n), unit="D"),
+        "year_built": np.where(rng.random(n) < 0.9, rng.integers(1850, 2024, n), np.nan),
+        "levels": rng.integers(1, 9, n).astype(float),
+        "dwellings": rng.integers(1, 80, n).astype(float),
+        "elevator": np.where(rng.random(n) < 0.7, rng.integers(0, 2, n), np.nan),
+        "social_share": np.round(rng.random(n) * 0.5, 2),
+    })

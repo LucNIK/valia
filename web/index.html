@@ -57,6 +57,19 @@
           <div><label for="rooms">Pièces</label><input id="rooms" type="number" inputmode="numeric" min="1" max="20" step="1" placeholder="3" required></div>
           <div id="land-field" hidden><label for="land">Terrain (m²)</label><input id="land" type="number" inputmode="numeric" min="0" step="10" placeholder="400"></div>
         </div>
+        <div>
+          <div class="row building">
+            <div><label for="dpe">Classe énergie (DPE)</label>
+              <select id="dpe">
+                <option value="">Inconnue</option>
+                <option value="1">A</option><option value="2">B</option><option value="3">C</option>
+                <option value="4">D</option><option value="5">E</option><option value="6">F</option>
+                <option value="7">G</option>
+              </select></div>
+            <div><label for="year">Année de construction</label><input id="year" type="number" inputmode="numeric" min="1000" max="2030" step="1" placeholder="1965"></div>
+          </div>
+          <p class="hint" id="building-hint" aria-live="polite"></p>
+        </div>
         <p class="error" id="error" role="alert" hidden></p>
         <button class="primary" type="submit" id="submit">Estimer</button>
       </form>
@@ -84,13 +97,14 @@
           </div>
         </div>
         <p class="note">Estimation indicative fondée sur les ventes passées, qui ne remplace pas l'avis d'un professionnel.
-          L'état du bien, l'étage, la vue ou le DPE ne sont pas encore pris en compte.</p>
+          L'état intérieur, l'étage et la vue ne sont pas pris en compte.</p>
       </section>
     </main>
 
     <footer>
       <p id="accuracy"></p>
       <p>Données&nbsp;: <a href="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/" rel="noopener">DVF géolocalisées</a> (Etalab), Licence Ouverte 2.0<span id="through"></span>.
+        Bâtiments&nbsp;: <a href="https://bdnb.io" rel="noopener">BDNB</a> (CSTB), données publiées ici sous <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="noopener">ODbL</a>.
         Adresses&nbsp;: Géoplateforme (IGN).</p>
       <p>© 2026 John Luke NIKABOU (LucNIK) · <a href="https://github.com/LucNIK/valia/blob/main/LICENSE" rel="noopener">MIT</a> · <a href="https://ayuefu.com" rel="noopener">ayuefu.com</a></p>
     </footer>

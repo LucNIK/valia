@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 John Luke NIKABOU (LucNIK)
 
-# Downloads DVF, rebuilds the clean dataset, measures the references and trains the model,
+# Downloads DVF and the BDNB building data, rebuilds the clean dataset, measures the references and trains the model,
 # then trains the compact web model, exports the site's data, checks that the browser reproduces
 # Python on 1,000 homes and publishes the site to GitHub Pages.
 # Runs on demand and after each DVF publication (April and October).
@@ -50,6 +50,12 @@ jobs:
           name: valia-clean-sales
           path: data/clean/
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: valia-bdnb-parcels
+          path: data/ref/bdnb/*.parquet
+          retention-days: 30
+          if-no-files-found: warn
 
   site:
     needs: pipeline
@@ -79,6 +85,11 @@ jobs:
         with:
           name: valia-reports
           path: reports/
+      - uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: valia-bdnb-parcels
+          path: data/ref/bdnb/
       - name: Train the web model
         run: python -m valia train --profile web
       - name: Export the site's data

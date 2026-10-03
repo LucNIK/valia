@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valia"
-version = "0.3.0"
+version = "0.4.0"
 description = "French property price estimation from public DVF data, with honest chronological evaluation"
 readme = "README.md"
 license = "MIT"

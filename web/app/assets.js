@@ -50,6 +50,8 @@ import { readForest } from "./trees.js";
  * @property {{dep: Record<string, number | null>, france: number}} static
  * @property {Record<string, any>} accuracy
  * @property {string} source
+ * @property {string[]} parcel_fields
+ * @property {string | null} [buildings_source]
  * @typedef {{global_half_width_log: number, by_group: Record<string, number>}} Intervals
  */
 
@@ -63,8 +65,9 @@ export class Assets {
    * @param {Record<string, number[]>} index existing tiles, {row: [col, ...]}
    * @param {import("./trees.js").Forest} forest
    * @param {string[]} features model inputs, in order
+   * @param {string[]} parcelCodes communes with published building data
    */
-  constructor(loader, meta, intervals, stations, index, forest, features) {
+  constructor(loader, meta, intervals, stations, index, forest, features, parcelCodes) {
     this.loader = loader;
     this.meta = meta;
     this.intervals = intervals;
@@ -72,6 +75,9 @@ export class Assets {
     this.index = new Map(Object.entries(index).map(([r, cols]) => [Number(r), new Set(cols)]));
     this.forest = forest;
     this.features = features;
+    this.parcelCodes = new Set(parcelCodes);
+    /** @type {Map<string, Promise<Record<string, (number | null)[]>>>} */
+    this.parcels = new Map();
     /** @type {Map<string, Promise<Tile | null>>} */
     this.tiles = new Map();
     /** @type {Map<string, Promise<Record<string, Commune>>>} */
@@ -80,14 +86,15 @@ export class Assets {
 
   /** @param {Loader} loader */
   static async open(loader) {
-    const [meta, intervals, stations, index, model, header] = await Promise.all([
+    const [meta, intervals, stations, index, model, header, parcelCodes] = await Promise.all([
       loader.json("data/meta.json"), loader.json("data/intervals.json"), loader.json("data/stations.json"),
       loader.json("data/tiles/index.json"), loader.binary("data/model.bin"), loader.json("data/model.json"),
+      loader.json("data/parcels/index.json"),
     ]);
-    if (!meta || meta.format !== "valia-web/1") throw new Error("unsupported asset format");
+    if (!meta || meta.format !== "valia-web/2") throw new Error("unsupported asset format");
     const forest = readForest(model);
     if (header.features.length !== forest.nFeatures) throw new Error("model header does not match the trees");
-    return new Assets(loader, meta, intervals, stations || [], index || {}, forest, header.features);
+    return new Assets(loader, meta, intervals, stations || [], index || {}, forest, header.features, parcelCodes || []);
   }
 
   /**
@@ -120,6 +127,30 @@ export class Assets {
     const all = await p;
     return Object.hasOwn(all, code) ? all[code] : null;
   }
+}
+
+/**
+ * Building data of a cadastral parcel, as {field: value}, or null when unknown.
+ * @param {Assets} assets
+ * @param {string} parcelId 14 characters
+ * @returns {Promise<Record<string, number | null> | null>}
+ */
+export async function parcelOf(assets, parcelId) {
+  const code = parcelId.slice(0, 5);
+  if (parcelId.length !== 14 || !assets.parcelCodes.has(code)) return null;
+  let p = assets.parcels.get(code);
+  if (!p) {
+    p = assets.loader.json(`data/parcels/${code}.json`).then((x) => x || {});
+    assets.parcels.set(code, p);
+  }
+  const all = await p;
+  const key = parcelId.slice(5);
+  if (!Object.hasOwn(all, key)) return null;
+  const values = all[key];
+  /** @type {Record<string, number | null>} */
+  const entry = {};
+  assets.meta.parcel_fields.forEach((name, i) => { entry[name] = values[i]; });
+  return entry;
 }
 
 /**

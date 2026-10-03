@@ -56,6 +56,10 @@ test("browser estimates match the Python reference", { skip: !existsSync(parityF
     assert.equal(got.commune, row.commune, `${where} commune`);
     assert.equal(got.segment, row.segment, `${where} segment`);
     assert.equal(got.anchorSource, row.anchor_source, `${where} anchor`);
+    for (const [name, want] of Object.entries(row.building)) {
+      if (want === null) assert.ok(got.building[name] === null || Number.isNaN(got.building[name]), `${where} ${name}`);
+      else close(/** @type {number} */ (want), /** @type {number} */ (got.building[name]), `${where} building ${name}`);
+    }
     assert.deepEqual(got.comparables.map((c) => [c.lat, c.lon, c.m, c.price]), row.comparables, `${where} comparables`);
     checked++;
   }

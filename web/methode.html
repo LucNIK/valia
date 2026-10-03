@@ -46,10 +46,19 @@
         les plus proches sur les vingt-quatre derniers mois. À défaut, elle se replie sur les ventes récentes
         du quartier (environ 500&nbsp;m, puis 2&nbsp;km), puis de la commune.</p>
 
+      <h2>Le bâtiment</h2>
+      <p>La <a href="https://bdnb.io" rel="noopener">Base de données nationale des bâtiments</a> (BDNB, CSTB) décrit chaque
+        bâtiment&nbsp;: classe énergie (DPE), année de construction, nombre de niveaux et de logements, ascenseur, part de
+        logements sociaux. Valia la relie à chaque vente par la parcelle cadastrale, et retrouve le bâtiment de votre
+        adresse pour pré-remplir la classe énergie et l'année, que vous pouvez corriger. Un DPE réalisé après une vente
+        n'est jamais utilisé pour apprendre de cette vente.</p>
+      <p class="muted">Les données de bâtiments publiées par Valia sont dérivées de la BDNB et diffusées sous licence
+        <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="noopener">ODbL</a>, comme leur source.</p>
+
       <h2>L'ajustement&nbsp;: un modèle d'apprentissage</h2>
       <p>Un modèle de <em>gradient boosting</em> (LightGBM) apprend l'écart entre ce point de départ et le prix réel,
-        selon la surface, le nombre de pièces, le terrain, la dynamique du quartier, la population et la densité de la commune
-        et la distance à la gare la plus proche. Il est entraîné uniquement sur des ventes antérieures à celles qu'il prédit.</p>
+        selon la surface, le nombre de pièces, le terrain, le bâtiment, la dynamique du quartier, la population et la densité
+        de la commune et la distance à la gare la plus proche. Il est entraîné uniquement sur des ventes antérieures à celles qu'il prédit.</p>
 
       <h2>La fourchette</h2>
       <p>La fourchette est calibrée par <em>conformal prediction</em> sur des ventes que le modèle n'a pas vues&nbsp;:
@@ -64,13 +73,14 @@
       <p class="muted">L'écart médian signifie que la moitié des estimations sont plus proches du prix réel que ce chiffre.</p>
 
       <h2>Vie privée</h2>
-      <p>Le calcul se fait dans votre navigateur. Seul le texte de l'adresse est envoyé au service de géocodage
-        de l'IGN pour la retrouver&nbsp;; rien n'est enregistré par Valia. Les ventes publiées sont arrondies à environ
+      <p>Le calcul se fait dans votre navigateur. Seuls le texte de l'adresse et sa position sont envoyés au service de
+        géocodage de l'IGN, pour retrouver l'adresse et sa parcelle&nbsp;; rien n'est enregistré par Valia. Les ventes publiées sont arrondies à environ
         100&nbsp;m et au mois, sans adresse ni identifiant.</p>
 
       <h2>Limites</h2>
       <ul>
-        <li>L'état du bien, l'étage, l'exposition ou le DPE ne sont pas connus du modèle (le DPE arrive en v0.4).</li>
+        <li>L'état intérieur, l'étage et l'exposition ne sont pas connus du modèle&nbsp;; pour un appartement, la classe
+          énergie pré-remplie est celle d'un logement représentatif de l'immeuble.</li>
         <li>Là où les ventes sont rares, l'estimation s'appuie sur des niveaux moyens et devient peu fiable&nbsp;; Valia le signale.</li>
         <li>Une estimation statistique n'est pas un avis de valeur.</li>
       </ul>
@@ -79,6 +89,7 @@
     <footer>
       <p id="accuracy"></p>
       <p>Données&nbsp;: <a href="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/" rel="noopener">DVF géolocalisées</a> (Etalab), Licence Ouverte 2.0<span id="through"></span>.
+        Bâtiments&nbsp;: <a href="https://bdnb.io" rel="noopener">BDNB</a> (CSTB), données publiées ici sous <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="noopener">ODbL</a>.
         Adresses&nbsp;: Géoplateforme (IGN).</p>
       <p>© 2026 John Luke NIKABOU (LucNIK) · <a href="https://github.com/LucNIK/valia/blob/main/LICENSE" rel="noopener">MIT</a> · <a href="https://ayuefu.com" rel="noopener">ayuefu.com</a></p>
     </footer>

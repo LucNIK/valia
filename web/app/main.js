@@ -2,9 +2,9 @@
 // Copyright (c) 2026 John Luke NIKABOU (LucNIK)
 // @ts-check
 
-import { Assets, httpLoader } from "./assets.js";
+import { Assets, httpLoader, parcelOf } from "./assets.js";
 import * as fmt from "./format.js";
-import { searchAddress } from "./geocode.js";
+import { parcelAt, searchAddress } from "./geocode.js";
 import { departmentOf } from "./geo.js";
 import { estimate } from "./infer.js";
 
@@ -30,6 +30,10 @@ const surface = /** @type {HTMLInputElement} */ ($("surface"));
 const rooms = /** @type {HTMLInputElement} */ ($("rooms"));
 const land = /** @type {HTMLInputElement} */ ($("land"));
 const landField = $("land-field");
+const dpe = /** @type {HTMLSelectElement} */ ($("dpe"));
+const year = /** @type {HTMLInputElement} */ ($("year"));
+const hint = $("building-hint");
+const DPE_LETTERS = " ABCDEFG";
 const error = $("error");
 const submit = /** @type {HTMLButtonElement} */ ($("submit"));
 const result = $("result");
@@ -37,8 +41,11 @@ const result = $("result");
 const assetsPromise = Assets.open(httpLoader(new URL("./", location.href)));
 assetsPromise.then(showAccuracy).catch(() => showError("Les données n'ont pas pu être chargées. Réessayez plus tard."));
 
-/** @type {import("./geocode.js").Place | null} */
+/** @typedef {import("./geocode.js").Place & {parcel?: string}} Located */
+/** @type {Located | null} */
 let place = null;
+/** @type {Promise<void>} */
+let lookup = Promise.resolve();
 /** @type {import("./geocode.js").Place[]} */
 let options = [];
 let active = -1;
@@ -111,10 +118,40 @@ function closeList() {
 
 /** @param {import("./geocode.js").Place} p */
 function choose(p) {
-  place = p;
+  place = { ...p };
   address.value = p.label;
   closeList();
   surface.focus();
+  lookup = findBuilding(place);
+}
+
+/**
+ * Finds the parcel under the address and pre-fills the building fields from the BDNB.
+ * @param {Located} where
+ */
+async function findBuilding(where) {
+  hint.textContent = "Recherche du bâtiment…";
+  hint.className = "hint";
+  try {
+    const [assets, parcel] = await Promise.all([assetsPromise, parcelAt(where.lat, where.lon)]);
+    if (place !== where) return;                       // another address was chosen meanwhile
+    const entry = parcel ? await parcelOf(assets, parcel) : null;
+    where.parcel = parcel || "";
+    if (!entry) {
+      hint.textContent = "Bâtiment non trouvé : renseignez ces champs si vous les connaissez.";
+      return;
+    }
+    dpe.value = entry.dpe_class ? String(entry.dpe_class) : "";
+    year.value = entry.year_built ? String(entry.year_built) : "";
+    const facts = [entry.levels ? `${entry.levels} niveau${entry.levels > 1 ? "x" : ""}` : "",
+                   entry.dwellings ? `${entry.dwellings} logement${entry.dwellings > 1 ? "s" : ""}` : "",
+                   entry.elevator ? "ascenseur" : ""].filter(Boolean).join(", ");
+    hint.textContent = `Trouvé dans la BDNB${facts ? ` (${facts})` : ""}. Corrigez si votre logement diffère, ` +
+      "par exemple après une rénovation.";
+    hint.className = "hint found";
+  } catch {
+    if (place === where) hint.textContent = "Bâtiment non trouvé : renseignez ces champs si vous les connaissez.";
+  }
 }
 
 // ---- form
@@ -146,6 +183,10 @@ form.addEventListener("submit", async (e) => {
   if (!(s >= 9 && s <= 1000)) return showError("La surface doit être comprise entre 9 et 1 000 m².");
   if (!(Number.isInteger(r) && r >= 1 && r <= 20)) return showError("Le nombre de pièces doit être compris entre 1 et 20.");
   if (!(l >= 0)) return showError("La surface du terrain ne peut pas être négative.");
+  const y = year.value ? Number(year.value) : null;
+  if (y !== null && !(Number.isInteger(y) && y >= 1000 && y <= 2030)) {
+    return showError("L'année de construction doit être comprise entre 1000 et 2030.");
+  }
   if (NOT_COVERED.has(departmentOf(place.citycode))) {
     return showError("Les ventes de ce département ne sont pas publiées dans DVF (Alsace, Moselle, Mayotte) : pas d'estimation possible.");
   }
@@ -153,12 +194,15 @@ form.addEventListener("submit", async (e) => {
   const type = selectedType();
   submit.disabled = true;
   try {
+    await lookup;
     const assets = await assetsPromise;
+    const building = { dpe_class: dpe.value ? Number(dpe.value) : null, year_built: y };
     const out = await estimate(assets, { lat: where.lat, lon: where.lon, type, surface: s, rooms: r, land: l,
-                                         citycode: where.citycode });
+                                         citycode: where.citycode, parcel: where.parcel || "", building });
     render(assets, out, type, where);
     const state = new URLSearchParams({ a: where.label, c: where.citycode, lat: String(where.lat),
-                                        lon: String(where.lon), t: type, s: String(s), r: String(r), l: String(l) });
+                                        lon: String(where.lon), t: type, s: String(s), r: String(r), l: String(l),
+                                        p: where.parcel || "", d: dpe.value, y: year.value });
     history.replaceState(null, "", `#${state.toString()}`);
   } catch (err) {
     console.error(err);
@@ -207,6 +251,11 @@ function render(assets, out, type, where) {
       "le nombre de pièces, le terrain, la dynamique du quartier et la distance à une gare." +
       (accuracy ? ` Dans ce type de zone (${out.segment.toLowerCase()}), l'écart médian avec le prix de vente ` +
                   `réel a été de ${String(accuracy).replace(".", ",")} % lors du test sur ${assets.meta.accuracy.test_year}.` : "");
+
+  const b = out.building;
+  const parts = [b.dpe_class ? `classe énergie ${DPE_LETTERS[Number(b.dpe_class)]}` : "",
+                 b.year_built ? `construit en ${b.year_built}` : ""].filter(Boolean);
+  if (!weak && parts.length) explain.textContent += ` Bâtiment pris en compte : ${parts.join(", ")}.`;
 
   renderComparables(out.comparables, where);
   result.hidden = false;
@@ -270,7 +319,10 @@ function showAccuracy(assets) {
   const lat = Number(p.get("lat"));
   const lon = Number(p.get("lon"));
   if (!p.get("a") || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
-  place = { label: String(p.get("a")), context: "", citycode: String(p.get("c") || ""), type: "", lat, lon };
+  place = { label: String(p.get("a")), context: "", citycode: String(p.get("c") || ""), type: "", lat, lon,
+            parcel: String(p.get("p") || "") };
+  dpe.value = p.get("d") || "";
+  year.value = p.get("y") || "";
   address.value = place.label;
   if (p.get("t") === "M") {
     /** @type {HTMLInputElement} */ ($("type-m")).checked = true;

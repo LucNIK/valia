@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .bdnb import building_features
 from .model import FEATURES
 from .treemodel import Forest, predict_row, read_binary
 
@@ -52,6 +53,8 @@ class Query:
     rooms: float
     land: float = 0.0
     citycode: str = ""
+    parcel: str = ""                       # 14-character cadastral id, from the address lookup
+    building: dict | None = None           # user corrections, e.g. {"dpe_class": 4, "year_built": None}
 
 
 @dataclass
@@ -62,8 +65,10 @@ class Assets:
     intervals: dict = field(init=False)
     stations: list[float] = field(init=False)
     tile_index: dict[str, set[str]] = field(init=False)
+    parcel_codes: set[str] = field(init=False)
     _tiles: dict = field(default_factory=dict, init=False)
     _communes: dict = field(default_factory=dict, init=False)
+    _parcels: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         data = self.root / "data"
@@ -73,6 +78,8 @@ class Assets:
         self.stations = json.loads((data / "stations.json").read_text())
         index = json.loads((data / "tiles" / "index.json").read_text())
         self.tile_index = {r: {str(c) for c in cols} for r, cols in index.items()}
+        parcel_index = data / "parcels" / "index.json"
+        self.parcel_codes = set(json.loads(parcel_index.read_text())) if parcel_index.exists() else set()
 
     def tile(self, row: int, col: int) -> dict | None:
         key = f"{row}_{col}"
@@ -89,6 +96,29 @@ class Assets:
             path = self.root / "data" / "communes" / f"{dep}.json"
             self._communes[dep] = json.loads(path.read_text()) if path.exists() else {}
         return self._communes[dep].get(code)
+
+
+    def parcel_file(self, code: str) -> dict:
+        if code not in self.parcel_codes:
+            return {}
+        if code not in self._parcels:
+            self._parcels[code] = json.loads((self.root / "data" / "parcels" / f"{code}.json").read_text())
+        return self._parcels[code]
+
+    def parcel(self, parcel_id: str) -> dict | None:
+        """Building data of a parcel, as {field: value}, or None when unknown."""
+        if len(parcel_id) != 14 or parcel_id[:5] not in self.parcel_codes:
+            return None
+        values = self.parcel_file(parcel_id[:5]).get(parcel_id[5:])
+        return None if values is None else dict(zip(self.meta["parcel_fields"], values, strict=True))
+
+
+def building_of(assets: Assets, q: Query) -> dict:
+    """Published building data of the parcel, then the user's corrections on top."""
+    entry = dict(assets.parcel(q.parcel) or {}) if q.parcel else {}
+    for key, value in (q.building or {}).items():
+        entry[key] = value
+    return entry
 
 
 def grid(meta: dict, lat: float, lon: float, factor: int = 1) -> tuple[int, int]:
@@ -188,6 +218,8 @@ def features(assets: Assets, q: Query) -> tuple[dict, dict]:
     for col_name in ("pop_log", "density_log", "density_grid", "equipment_level"):
         v = entry.get(col_name)
         f[col_name] = math.nan if v is None else float(v)
+    building = building_of(assets, q)
+    f.update(building_features(building))
     st = assets.stations
     f["station_km"] = (min(haversine_km(q.lat, q.lon, st[i], st[i + 1]) for i in range(0, len(st), 2))
                        if st else math.nan)
@@ -209,7 +241,7 @@ def features(assets: Assets, q: Query) -> tuple[dict, dict]:
             anchor = meta["static"]["france"]
     f["anchor"] = anchor
     context = {"commune": code, "segment": entry.get("seg", "Rural"), "comparables": found[:5],
-               "anchor_source": source}
+               "anchor_source": source, "building": building}
     return f, context
 
 
@@ -246,6 +278,9 @@ def sample_queries(assets: Assets, n: int, seed: int = 0) -> list[Query]:
         s = tile.get("sales")
         if s:
             pool += [(s["la"][i], s["lo"][i], tile["communes"][s["c"][i]]) for i in range(len(s["m"]))]
+    parcel_pool: list[str] = []
+    for code in sorted(assets.parcel_codes)[:50]:
+        parcel_pool += [code + key for key in assets.parcel_file(code)]
     queries: list[Query] = []
     for i in range(n):
         lat, lon, code = pool[int(rng.integers(len(pool)))] if pool else (46.5, 2.5, "")
@@ -254,8 +289,17 @@ def sample_queries(assets: Assets, n: int, seed: int = 0) -> list[Query]:
         rooms = float(max(1, min(12, round(surface / 22 + rng.normal(0, 0.8)))))
         land = float(rng.integers(0, 3000)) if kind == "M" else 0.0
         citycode = code if i % 10 else ("" if i % 20 else "00000")
+        parcel = ""
+        if parcel_pool and i % 3 == 0:
+            parcel = parcel_pool[int(rng.integers(len(parcel_pool)))]
+        elif i % 17 == 0:
+            parcel = "99999000ZZ9999"                        # unknown parcel
+        building = None
+        if i % 7 == 0:
+            building = {"dpe_class": None if rng.random() < 0.3 else int(rng.integers(1, 8)),
+                        "year_built": None if rng.random() < 0.3 else int(rng.integers(1850, 2025))}
         queries.append(Query(round(lat + rng.normal(0, 0.003), 6), round(lon + rng.normal(0, 0.004), 6),
-                             kind, surface, rooms, land, citycode))
+                             kind, surface, rooms, land, citycode, parcel, building))
     queries.append(Query(0.0, -30.0, "A", 50.0, 2.0, 0.0, ""))         # middle of the ocean
     return queries
 
@@ -270,6 +314,7 @@ def fixtures(assets: Assets, queries: list[Query]) -> list[dict]:
             "features": {k: _json_number(v) for k, v in r["features"].items()},
             "log_ppm2": r["log_ppm2"], "price": r["price"], "low": r["low"], "high": r["high"],
             "commune": r["commune"], "segment": r["segment"], "anchor_source": r["anchor_source"],
+            "building": {k: _json_number(v) if isinstance(v, float) else v for k, v in r["building"].items()},
             "comparables": [[c["lat"], c["lon"], c["m"], c["price"]] for c in r["comparables"]],
         })
     return out

@@ -35,7 +35,7 @@ RAW_COLUMNS = [
 RAW_DTYPES = {"id_mutation": str, "code_commune": str, "code_departement": str, "id_parcelle": str,
               "type_local": str, "nature_mutation": str}
 
-CLEAN_COLUMNS = ["id_mutation", "date", "year", "month", "dep", "code_commune", "type", "surface",
+CLEAN_COLUMNS = ["id_mutation", "date", "year", "month", "dep", "code_commune", "parcel", "type", "surface",
                  "rooms", "land", "lat", "lon", "price", "price_m2", "log_ppm2"]
 
 
@@ -80,6 +80,7 @@ def clean(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "date": pd.to_datetime(sales["date_mutation"].to_numpy()),
         "dep": sales["code_departement"].to_numpy(),
         "code_commune": sales["code_commune"].to_numpy(),
+        "parcel": sales["id_parcelle"].to_numpy(),          # the dwelling's parcel, joins the BDNB
         "type": sales["type_local"].map(DWELLING_TYPES).to_numpy(),
         "surface": pd.to_numeric(sales["surface_reelle_bati"], errors="coerce").to_numpy(),
         "rooms": pd.to_numeric(sales["nombre_pieces_principales"], errors="coerce").to_numpy(),

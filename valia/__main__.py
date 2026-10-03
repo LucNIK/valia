@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import __version__
+from . import __version__, bdnb
 from .baseline import SEGMENTS, evaluate
 from .clean import clean, read_raw
 from .config import CLEAN_DIR, RAW_DIR, REPORTS_DIR, SOURCE_NAME
@@ -42,7 +42,8 @@ def cmd_build(args) -> None:
             continue
         files += len(paths)
         sales, dep_funnel = clean(read_raw(paths))
-        parts.append(enrich(add_features(sales), communes, stations))
+        parcels = None if args.no_bdnb or args.no_enrich else bdnb.parcels_for(dep)
+        parts.append(bdnb.attach(enrich(add_features(sales), communes, stations), parcels))
         for step, n in dep_funnel.items():
             funnel[step] = funnel.get(step, 0) + n
     if not parts:
@@ -51,7 +52,7 @@ def cmd_build(args) -> None:
     written = save_table(sales.reset_index(drop=True), Path(args.clean) / SALES.name)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     (REPORTS_DIR / "funnel.json").write_text(json.dumps(funnel, indent=2))
-    (REPORTS_DIR / "enrichment.json").write_text(json.dumps(coverage(sales), indent=2))
+    (REPORTS_DIR / "enrichment.json").write_text(json.dumps({**coverage(sales), **bdnb.coverage(sales)}, indent=2))
     print(f"[build] {files} files -> {len(sales):,} sales in {time.perf_counter() - started:.1f}s -> {written}")
     for step, n in funnel.items():
         print(f"        {step:<24} {n:>12,}")
@@ -108,7 +109,10 @@ def cmd_export(args) -> None:
     segments = dict(zip(per_commune["code_commune"].astype(str), segment_of(train, per_commune), strict=True))
     communes, stations = (None, None) if args.no_enrich else fetch_references()
     started = time.perf_counter()
-    summary = export_assets(sales, forest, anchors, intervals, segments, communes, stations, report, Path(args.out))
+    files = sorted(bdnb.BDNB_DIR.glob("parcels_*.parquet"))
+    parcels = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True) if files else None
+    summary = export_assets(sales, forest, anchors, intervals, segments, communes, stations, report,
+                            Path(args.out), parcels)
     print(f"[export] {summary} in {time.perf_counter() - started:.1f}s -> {args.out}/data")
 
 
@@ -192,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("fetch", "build", "all"):
         p = sub.add_parser(name)
         p.add_argument("--no-enrich", action="store_true", help="skip the open-data enrichment downloads")
+        p.add_argument("--no-bdnb", action="store_true", help="skip the BDNB building data")
         p.add_argument("--fast", action="store_true", help="small model, for smoke tests")
         p.add_argument("--years", default="2021-2025", help="e.g. 2021-2025 or 2023,2024")
         p.add_argument("--departements", default="all", help="'all' or a list such as 75,69,13")

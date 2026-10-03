@@ -54,3 +54,12 @@ test("tree decisions follow LightGBM", () => {
   assert.equal(predictRow(f, [1, NaN]), 30.5);      // NaN missing type -> default right
   assert.throws(() => predictRow(f, [1]));
 });
+
+test("parcel ids from the address service", async () => {
+  const { parcelId } = await import("../app/geocode.js");
+  assert.equal(parcelId({ id: "75104000AB0012" }), "75104000AB0012");
+  assert.equal(parcelId({ departmentcode: "44", municipalitycode: "109", section: "EX", number: "8" }), "44109000EX0008");
+  assert.equal(parcelId({ departmentcode: "01", municipalitycode: "4", oldmunicipalitycode: "12", section: "A", number: "123" }),
+               "010040120A0123");
+  assert.equal(parcelId({ section: "A" }), null);
+});

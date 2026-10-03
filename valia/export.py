@@ -11,6 +11,7 @@ so estimation runs in the browser with no server:
   data/intervals.json            conformal half-widths per segment and property type
   data/stations.json             railway stations, for the distance feature
   data/communes/<dep>.json       per commune: segment, static median, profile, recent priors
+  data/parcels/<code>.json       per parcel holding dwellings: building data from the BDNB (ODbL)
   data/tiles/index.json          which tiles exist: {row: [col, ...]}
   data/tiles/<row>_<col>.json    per ~2.2 km tile: recent priors of its ~550 m cells and the sales of
                                  the last 24 months (comparables and nearest-neighbour features)
@@ -28,11 +29,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .bdnb import SOURCE_NAME as BDNB_SOURCE
 from .config import CELL_DEG_LAT, CELL_DEG_LON, PRIOR_MIN_SALES
 from .enrich import parent_commune
 from .features import COARSE_FACTOR, KNN_K, KNN_LOOKBACK_MONTHS, cell_id
 
-FORMAT = "valia-web/1"
+FORMAT = "valia-web/2"
+PARCEL_FIELDS = ["dpe_class", "year_built", "levels", "dwellings", "elevator", "social_share"]
 COORD_DECIMALS = 3
 TYPES = ("A", "M")
 
@@ -69,7 +72,7 @@ def _prior_dict(table: pd.DataFrame) -> dict[str, dict[str, list]]:
 
 def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, segments: dict[str, str],
                   communes: pd.DataFrame | None, stations: np.ndarray | None, report: dict,
-                  out_dir: Path) -> dict:
+                  out_dir: Path, parcels: pd.DataFrame | None = None) -> dict:
     """Write every asset under out_dir/data. Returns a summary (counts and sizes)."""
     from .treemodel import write_binary
 
@@ -158,6 +161,8 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
     (data / "tiles" / "index.json").write_text(
         json.dumps({r: sorted(cols) for r, cols in sorted(index.items())}, separators=(",", ":")))
 
+    parcel_summary = export_parcels(parcels, data)
+
     overall = report.get("model", {}).get("overall", {})
     meta = {
         "format": FORMAT,
@@ -178,8 +183,41 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
             "by_segment": {k: {"mdape_pct": v.get("mdape_pct"), "coverage_pct": v.get("coverage_pct")}
                            for k, v in report.get("model", {}).get("by_segment", {}).items()},
         },
+        "parcel_fields": PARCEL_FIELDS,
         "source": "Demandes de valeurs foncières géolocalisées (Etalab) — Licence Ouverte 2.0",
+        "buildings_source": BDNB_SOURCE if parcels is not None else None,
     }
     (data / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
     return {"tiles": len(tiles), "tile_bytes": sizes, "model_bytes": model_bytes,
-            "communes": sum(len(v) for v in by_dep.values()), "recent_sales": len(recent)}
+            "communes": sum(len(v) for v in by_dep.values()), "recent_sales": len(recent), **parcel_summary}
+
+
+def export_parcels(parcels: pd.DataFrame | None, data: Path) -> dict:
+    """data/parcels/<5 first characters>.json: {rest of the parcel id: [PARCEL_FIELDS values]}.
+
+    This is a database derived from the BDNB, published under the ODbL like its source."""
+    folder = data / "parcels"
+    folder.mkdir(parents=True, exist_ok=True)
+    if parcels is None or parcels.empty:
+        (folder / "index.json").write_text("[]")
+        return {"parcels": 0, "parcel_bytes": 0}
+    frame = parcels.drop_duplicates("parcel").copy()
+    frame = frame[frame["parcel"].astype(str).str.len() == 14]
+    frame["code"] = frame["parcel"].str.slice(0, 5)
+    frame["key"] = frame["parcel"].str.slice(5)
+    size = 0
+    codes = []
+    for code, part in frame.groupby("code", sort=True):
+        rows = {}
+        for row in part[["key", *PARCEL_FIELDS]].itertuples(index=False):
+            values = [_num(v, 2) for v in row[1:]]
+            rows[row[0]] = [int(v) if v is not None and float(v).is_integer() else v for v in values]
+        text = json.dumps(rows, separators=(",", ":"))
+        size += len(text)
+        (folder / f"{code}.json").write_text(text)
+        codes.append(str(code))
+    (folder / "index.json").write_text(json.dumps(codes, separators=(",", ":")))
+    (folder / "LICENCE.txt").write_text(
+        "Données dérivées de la BDNB (CSTB), publiées sous licence ODbL 1.0 : "
+        "https://opendatacommons.org/licenses/odbl/1-0/\n")
+    return {"parcels": len(frame), "parcel_bytes": size}

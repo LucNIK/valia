@@ -3,7 +3,7 @@
 
 # Model card — Valia
 
-*Filled in by each release. Latest: v0.3 — the model is published in the web app.*
+*Filled in by each release. Latest: v0.4 — building data from the BDNB (results pending).*
 
 Last full run: DVF 2021–2025, all covered départements, test year **2025** (800,229 sales never seen in training).
 
@@ -129,6 +129,21 @@ for a file 50 times smaller. Top features by gain: surface, land, anchor, compar
 **Exit criterion met:** on the same run, the browser code reproduced the Python reference on 1,000 homes
 across France (features, price and range to 10⁻⁹) before the site was published to GitHub Pages.
 The same check runs on a synthetic market in CI on every push.
+
+## Building data (v0.4)
+
+- Source: BDNB millésime 2026-02.a (CSTB), ODbL. Tables used: `rel_batiment_groupe_parcelle`,
+  `batiment_groupe_ffo_bat`, `batiment_groupe_dpe_representatif_logement`.
+- Join: the sale's cadastral parcel (DVF `id_parcelle`) → building groups on that parcel → the one
+  with the most dwellings.
+- New inputs: DPE class (A=1 … G=7), construction year, storeys, log number of dwellings, lift,
+  share of social housing.
+- Leakage: a DPE dated after the sale is set to missing for that sale (a renovation after the sale
+  must not explain its price). The other attributes describe the building itself and are static.
+- In the app: the address is matched to its parcel (IGN reverse geocoding) and the building data
+  pre-fills the energy class and construction year, which the user can correct.
+- Limits: for an apartment the DPE is that of a representative dwelling of the building, not
+  necessarily the one sold; the BDNB is a 2026 snapshot applied to 2021–2025 sales.
 
 ## Known limits
 

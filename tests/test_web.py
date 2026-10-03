@@ -19,12 +19,13 @@ import numpy as np
 import pandas as pd
 
 from tests import synthetic
+from valia import bdnb
 from valia.baseline import segment_of
 from valia.clean import clean
 from valia.enrich import enrich
 from valia.export import export_assets
 from valia.features import add_features
-from valia.inference import Assets, Query, estimate, features, haversine_km, median
+from valia.inference import Assets, Query, estimate, features, haversine_km, median, neighbours
 from valia.model import FEATURES, Anchor, design
 from valia.treemodel import parse_lightgbm, predict, predict_row, read_binary, write_binary
 
@@ -109,19 +110,20 @@ class TreeModelTest(unittest.TestCase):
             self.assertEqual(json.loads(path.with_suffix(".json").read_text())["format"], "valia-trees/1")
 
 
-def build_market() -> tuple[pd.DataFrame, pd.Timestamp]:
+def build_market() -> tuple[pd.DataFrame, pd.Timestamp, pd.DataFrame]:
     """Synthetic sales, with positions already rounded as the export rounds them, so that the
     training pipeline and the browser see exactly the same neighbours."""
     raw = synthetic.market(per_year=500)
     raw["latitude"] = raw["latitude"].round(3)
     raw["longitude"] = raw["longitude"].round(3)
     sales, _ = clean(raw)
-    sales = enrich(add_features(sales), COMMUNES, STATIONS)
+    parcels = synthetic.bdnb_parcels(sales)
+    sales = bdnb.attach(enrich(add_features(sales), COMMUNES, STATIONS), parcels)
     as_of = (sales["date"].max() + pd.offsets.MonthBegin(1)).normalize()
-    return sales, as_of
+    return sales, as_of, parcels
 
 
-def export(sales: pd.DataFrame, root: Path):
+def export(sales: pd.DataFrame, root: Path, parcels: pd.DataFrame | None = None):
     forest = synthetic.random_forest(FEATURES, n_trees=40, depth=5, centers={
         "is_house": (0.5, 0.1), "surface_log": (4.2, 0.4), "rooms": (3, 1), "lat": (47, 1.5),
         "lon": (3, 1.5), "months": (40, 15), "anchor": (8, 0.8), "knn_prior": (8, 0.8),
@@ -134,7 +136,7 @@ def export(sales: pd.DataFrame, root: Path):
     report = {"version": "test", "test_year": 2025, "model": {"overall": {"mdape_pct": 15.0}}}
     anchors = {"commune": anchor.commune, "dep": anchor.dep, "france": anchor.france}
     summary = export_assets(sales, forest, anchors, intervals, segments, COMMUNES,
-                            np.round(STATIONS, 4), report, root)
+                            np.round(STATIONS, 4), report, root, parcels)
     return forest, anchor, summary
 
 
@@ -143,8 +145,8 @@ class ExportTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.tmp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.tmp.name)
-        cls.sales, cls.as_of = build_market()
-        cls.forest, cls.anchor, cls.summary = export(cls.sales, cls.root)
+        cls.sales, cls.as_of, cls.parcels = build_market()
+        cls.forest, cls.anchor, cls.summary = export(cls.sales, cls.root, cls.parcels)
         cls.assets = Assets(cls.root)
 
     @classmethod
@@ -175,25 +177,32 @@ class ExportTest(unittest.TestCase):
         row.update({"id_mutation": "virtual", "date": self.as_of, "year": self.as_of.year, "type": q.type,
                     "surface": q.surface, "rooms": q.rooms, "land": q.land if q.type == "M" else np.nan,
                     "lat": q.lat, "lon": q.lon, "code_commune": code, "dep": dep, "log_ppm2": 99.0,
-                    "price": 1.0})
+                    "price": 1.0, "parcel": q.parcel or np.nan})
         base = self.sales.drop(columns=[c for c in self.sales.columns if c.endswith(("_prior", "_n"))
                                         or c.startswith("knn_") or c in ("cell",)], errors="ignore")
         frame = pd.concat([base, pd.DataFrame([row])[base.columns]], ignore_index=True)
-        frame = enrich(add_features(frame), COMMUNES, np.round(STATIONS, 4))
+        frame = bdnb.attach(enrich(add_features(frame), COMMUNES, np.round(STATIONS, 4)), self.parcels)
         virtual = frame[frame["id_mutation"].eq("virtual")]
         level = self.anchor.level(virtual)
         return design(virtual, level).iloc[0]
 
     def test_inference_features_match_training(self) -> None:
-        cases = [(Query(48.857, 2.352, "A", 62, 3, citycode="75056"), "75056"),
-                 (Query(45.7641, 4.8361, "M", 120, 5, land=600, citycode="69123"), "69123"),
+        first = self.parcels.groupby(self.parcels["parcel"].str.slice(0, 5))["parcel"].first()
+        cases = [(Query(48.857, 2.352, "A", 62, 3, citycode="75056", parcel=first["75056"]), "75056"),
+                 (Query(45.7641, 4.8361, "M", 120, 5, land=600, citycode="69123", parcel=first["69123"]), "69123"),
                  (Query(46.17, 1.87, "M", 95, 4, land=1500, citycode=""), "23096")]
         for q, code in cases:
             with self.subTest(code=code):
                 got, ctx = features(self.assets, q)
                 self.assertEqual(ctx["commune"], code)
                 want = self.virtual_sale(q, code)
-                for name in FEATURES:
+                # Positions are rounded to ~100 m, so several sales can sit at exactly the k-th distance:
+                # which of them is taken is arbitrary (and differs between BallTree and the browser).
+                found, _, _ = neighbours(self.assets, q)
+                k = self.assets.meta["knn"]["k"]
+                tie = len(found) > k and found[k - 1]["km"] == found[k]["km"]
+                skip = {"knn_prior", "knn_age", "anchor"} if tie else set()
+                for name in (n for n in FEATURES if n not in skip):
                     a, b = float(np.float32(got[name])), float(want[name])
                     if math.isnan(b):
                         self.assertTrue(math.isnan(a), name)
@@ -212,12 +221,76 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(out["anchor_source"], "knn_prior")
         self.assertLessEqual(len(out["comparables"]), 5)
 
+    def test_user_corrections_replace_the_published_building(self) -> None:
+        parcel = self.parcels["parcel"].iloc[0]
+        q = Query(48.857, 2.352, "A", 62, 3, citycode="75056", parcel=parcel)
+        published, ctx = features(self.assets, q)
+        self.assertEqual(ctx["building"]["year_built"], self.parcels["year_built"].iloc[0])
+        q.building = {"dpe_class": 2, "year_built": None}
+        corrected, ctx = features(self.assets, q)
+        self.assertEqual(corrected["dpe_class"], 2)
+        self.assertTrue(math.isnan(corrected["year_built"]))
+        self.assertEqual(corrected["levels"], published["levels"])
+        unknown, _ = features(self.assets, Query(48.857, 2.352, "A", 62, 3, parcel="99999000ZZ9999"))
+        self.assertTrue(all(math.isnan(unknown[c]) for c in bdnb.BUILDING_COLUMNS))
+
     def test_far_from_any_sale_falls_back_to_static_levels(self) -> None:
         q = Query(43.3, 5.4, "A", 50, 2, citycode="13201")                   # Marseille: no data here
         f, ctx = features(self.assets, q)
         self.assertTrue(math.isnan(f["knn_prior"]))
         self.assertEqual(ctx["anchor_source"], "france")
         self.assertAlmostEqual(f["anchor"], self.anchor.france, places=5)
+
+
+class BuildingTest(unittest.TestCase):
+    def test_parcel_table_picks_the_building_with_most_dwellings(self) -> None:
+        rel = pd.DataFrame({"batiment_groupe_id": ["g1", "g2", "g3", "g4"],
+                            "parcelle_id": ["75104000AB0001", "75104000AB0001", "75104000AB0002", "75104000AB0003"]})
+        ffo = pd.DataFrame({"batiment_groupe_id": ["g1", "g2", "g3", "g4"],
+                            "annee_construction": ["1880", "1975", "0", ""],
+                            "nb_niveau": ["6", "12", "2", "1"], "nb_log": ["20", "3", "1", "0"],
+                            "presence_ascenseur": ["f", "t", "f", "f"], "nb_log_soc": ["0", "3", "0", "0"]})
+        dpe = pd.DataFrame({"batiment_groupe_id": ["g1", "g3"], "classe_bilan_dpe": ["D", "N"],
+                            "date_etablissement_dpe": ["2023-05-02 00:00:00", "2022-01-01"],
+                            "annee_construction_dpe": ["1890", "1960"]})
+        out = bdnb.parcels_from_tables(rel, ffo, dpe).set_index("parcel")
+        self.assertEqual(list(out.index), ["75104000AB0001", "75104000AB0002"])   # AB0003 has no dwelling
+        first = out.loc["75104000AB0001"]
+        got = (first["dpe_class"], first["year_built"], first["levels"], first["dwellings"])
+        self.assertEqual(got, (4, 1880, 6, 20))
+        self.assertEqual(first["elevator"], 0)
+        second = out.loc["75104000AB0002"]
+        self.assertTrue(math.isnan(second["dpe_class"]))                 # "N" is not a class
+        self.assertEqual(second["year_built"], 1960)                     # 0 is no year: the DPE's estimate is used
+
+    def test_archive_reading_is_tolerant(self) -> None:
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "dep75.zip")
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("csv/rel_batiment_groupe_parcelle.csv",
+                           "batiment_groupe_id;parcelle_id;code_departement_insee\ng1;75104000AB0001;75\n")
+                z.writestr("csv/batiment_groupe_ffo_bat.csv",
+                           "batiment_groupe_id,nb_log,annee_construction\ng1,8,1930\n")
+            out = bdnb.read_archive(path)
+            self.assertEqual(out.iloc[0]["parcel"], "75104000AB0001")
+            self.assertEqual(out.iloc[0]["dwellings"], 8)
+            self.assertTrue(math.isnan(out.iloc[0]["dpe_class"]))          # no DPE table: empty, not a failure
+            bad = Path(tmp, "bad.zip")
+            bad.write_bytes(b"not a zip")
+            self.assertIsNone(bdnb.read_archive(bad))
+
+    def test_a_dpe_made_after_the_sale_is_not_used(self) -> None:
+        sales = pd.DataFrame({"parcel": ["P1", "P1", "P2"],
+                              "date": pd.to_datetime(["2022-01-01", "2024-01-01", "2024-01-01"])})
+        parcels = pd.DataFrame({"parcel": ["P1"], "dpe_class": [6.0], "dpe_date": pd.to_datetime(["2023-03-01"]),
+                                "year_built": [1950.0], "levels": [3.0], "dwellings": [9.0], "elevator": [1.0],
+                                "social_share": [0.0]})
+        out = bdnb.attach(sales, parcels)
+        self.assertTrue(math.isnan(out["dpe_class"].iloc[0]))
+        self.assertEqual(out["dpe_class"].iloc[1], 6)
+        self.assertEqual(out["year_built"].iloc[0], 1950)                # static facts are always known
+        self.assertTrue(out.iloc[2][bdnb.BUILDING_COLUMNS].isna().all())
 
 
 class HelpersTest(unittest.TestCase):

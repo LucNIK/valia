@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from .baseline import SEGMENTS, chronological_split, commune_median, metrics, neighbourhood_prior, segment_of
+from .bdnb import BUILDING_COLUMNS
 from .enrich import ENRICH_COLUMNS
 
 FEATURES = [
@@ -35,6 +36,7 @@ FEATURES = [
     "anchor", "cell_prior", "cell_n_log", "commune_prior", "commune_n_log",
     "cell_type_prior", "cell_type_n_log", "cell2_type_prior", "cell2_type_n_log",
     "commune_type_prior", "commune_type_n_log", "knn_prior", "knn_km", "knn_age", *ENRICH_COLUMNS,
+    *BUILDING_COLUMNS,
 ]
 # Most specific first: comparable sales, then same-type priors, then all-type priors.
 ANCHOR_CHAIN = ("knn_prior", "cell_type_prior", "cell_prior", "cell2_type_prior",
@@ -95,7 +97,7 @@ def design(frame: pd.DataFrame, level: pd.Series | None = None) -> pd.DataFrame:
         X[f"{prefix}_n_log"] = np.log1p(frame.get(f"{prefix}_n", np.nan))
     for col in ("knn_prior", "knn_km", "knn_age"):
         X[col] = frame.get(col, np.nan)
-    for col in ENRICH_COLUMNS:
+    for col in (*ENRICH_COLUMNS, *BUILDING_COLUMNS):
         X[col] = frame.get(col, np.nan)
     return X[FEATURES].astype("float32")
 

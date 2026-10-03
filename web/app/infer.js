@@ -7,6 +7,7 @@
  * against each other on reference homes (test/parity.test.js), so any change here goes there too.
  */
 
+import { parcelOf } from "./assets.js";
 import { cellOf, departmentOf, EARTH_RADIUS_KM, haversineKm, median } from "./geo.js";
 import { predictRow } from "./trees.js";
 
@@ -25,6 +26,8 @@ export const TYPE_LABEL = /** @type {const} */ ({ A: "Appartements", M: "Maisons
  * @property {number} rooms
  * @property {number} [land]
  * @property {string} [citycode]
+ * @property {string} [parcel]     14-character cadastral id, from the address lookup
+ * @property {Record<string, number | null> | null} [building]  user corrections, e.g. {dpe_class: 4}
  * @typedef {object} Sale
  * @property {number} m
  * @property {string} t
@@ -113,6 +116,30 @@ function prior(entry, kind) {
 /** @param {number | null | undefined} v */
 const num = (v) => (v === null || v === undefined ? NaN : v);
 
+/**
+ * Published building data of the parcel, then the user's corrections on top (see building_of()).
+ * @param {Assets} assets @param {Query} q
+ */
+export async function buildingOf(assets, q) {
+  /** @type {Record<string, number | null>} */
+  const entry = { ...((q.parcel ? await parcelOf(assets, q.parcel) : null) || {}) };
+  for (const [key, value] of Object.entries(q.building || {})) entry[key] = value;
+  return entry;
+}
+
+/**
+ * Model inputs from building data (see building_features() in bdnb.py).
+ * @param {Record<string, number | null>} entry
+ */
+export function buildingFeatures(entry) {
+  /** @param {string} key */
+  const get = (key) => num(entry[key]);
+  const dwellings = get("dwellings");
+  return { dpe_class: get("dpe_class"), year_built: get("year_built"), levels: get("levels"),
+           dwellings_log: Number.isNaN(dwellings) ? NaN : Math.log1p(dwellings),
+           elevator: get("elevator"), social_share: get("social_share") };
+}
+
 const ANCHOR_CHAIN = ["knn_prior", "cell_type_prior", "cell_prior", "cell2_type_prior",
                       "commune_type_prior", "commune_prior"];
 
@@ -166,6 +193,8 @@ export async function features(assets, q) {
   f.density_log = num(e.density_log);
   f.density_grid = num(e.density_grid);
   f.equipment_level = num(e.equipment_level);
+  const building = await buildingOf(assets, q);
+  Object.assign(f, buildingFeatures(building));
   const st = assets.stations;
   let station = Infinity;
   for (let i = 0; i < st.length; i += 2) station = Math.min(station, haversineKm(q.lat, q.lon, st[i], st[i + 1]));
@@ -195,7 +224,7 @@ export async function features(assets, q) {
   }
   f.anchor = anchor;
   return { features: f, commune: code, segment: e.seg || "Rural", comparables: found.slice(0, 5),
-           anchorSource: source };
+           anchorSource: source, building };
 }
 
 /**

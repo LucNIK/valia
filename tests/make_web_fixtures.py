@@ -18,8 +18,8 @@ from valia.inference import Assets, fixtures, sample_queries
 
 def main(out: str) -> None:
     root = Path(out)
-    sales, _ = build_market()
-    export(sales, root)
+    sales, _, parcels = build_market()
+    export(sales, root, parcels)
     rows = fixtures(Assets(root), sample_queries(Assets(root), 300, seed=1))
     (root / "parity.json").write_text(json.dumps(rows, separators=(",", ":")))
     print(f"[fixtures] {len(rows)} reference estimates -> {root}")
