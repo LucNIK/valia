@@ -120,8 +120,18 @@ class SklearnModel:
         return X.assign(**{c: 0.0 for c in self.empty}) if self.empty else X
 
 
-def make_regressor(fast: bool = False):
+# full: best accuracy, for evaluation. web: small enough for a phone (~1-2 MB), shipped in the app.
+# fast: tiny, for tests. Each profile is evaluated and calibrated on its own.
+PROFILES = {
+    "full": {"leaves": 255, "trees": 3000, "lr": 0.05, "min_leaf": 40},
+    "web": {"leaves": 63, "trees": 800, "lr": 0.1, "min_leaf": 80},
+    "fast": {"leaves": 63, "trees": 200, "lr": 0.08, "min_leaf": 40},
+}
+
+
+def make_regressor(fast: bool = False, profile: str | None = None):
     """LightGBM if available (production), scikit-learn otherwise. VALIA_BACKEND=sklearn forces it."""
+    p = PROFILES[profile or ("fast" if fast else "full")]
     try:
         if os.environ.get("VALIA_BACKEND", "").lower() == "sklearn":
             raise ImportError("scikit-learn backend requested")
@@ -130,13 +140,13 @@ def make_regressor(fast: bool = False):
         from sklearn.ensemble import HistGradientBoostingRegressor
 
         return "sklearn", SklearnModel(HistGradientBoostingRegressor(
-            loss="absolute_error", learning_rate=0.08, max_leaf_nodes=63 if fast else 255,
-            max_iter=200 if fast else 1500, min_samples_leaf=40, l2_regularization=1.0,
+            loss="absolute_error", learning_rate=max(p["lr"], 0.08), max_leaf_nodes=p["leaves"],
+            max_iter=min(p["trees"], 1500), min_samples_leaf=p["min_leaf"], l2_regularization=1.0,
             early_stopping=True, validation_fraction=0.05, n_iter_no_change=50, random_state=0))
     return "lightgbm", lgb.LGBMRegressor(
-        objective="l1", learning_rate=0.05, num_leaves=63 if fast else 255,
-        n_estimators=200 if fast else 3000, min_child_samples=40, subsample=0.8, subsample_freq=1,
-        colsample_bytree=0.8, reg_lambda=1.0, random_state=0, verbose=-1)
+        objective="l1", learning_rate=p["lr"], num_leaves=p["leaves"], n_estimators=p["trees"],
+        min_child_samples=p["min_leaf"], subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
+        reg_lambda=1.0, random_state=0, verbose=-1)
 
 
 def fit(regressor, backend: str, X: pd.DataFrame, y: pd.Series):
@@ -192,8 +202,10 @@ def interval_report(frame: pd.DataFrame, log_pred: np.ndarray, half: np.ndarray)
             "median_width_pct": round(float(np.median(width) * 100), 1)}
 
 
-def train_and_evaluate(sales: pd.DataFrame, test_year: int | None = None, fast: bool = False):
+def train_and_evaluate(sales: pd.DataFrame, test_year: int | None = None, fast: bool = False,
+                       profile: str | None = None):
     """Fit, calibrate and evaluate. Returns (model, intervals, report)."""
+    profile = profile or ("fast" if fast else "full")
     split = chronological_split(sales, test_year)
     cutoff = pd.Timestamp(split.test_year, 1, 1) - pd.DateOffset(months=CALIBRATION_MONTHS)
     proper = split.train[split.train["date"] < cutoff]
@@ -201,7 +213,7 @@ def train_and_evaluate(sales: pd.DataFrame, test_year: int | None = None, fast: 
     if proper.empty or calib.empty:
         raise ValueError("not enough history to separate training and calibration periods")
 
-    backend, regressor = make_regressor(fast)
+    backend, regressor = make_regressor(profile=profile)
     anchor = Anchor.fit(proper)
     level = anchor.level(proper)
     fit(regressor, backend, design(proper, level), proper["log_ppm2"] - level)
@@ -217,6 +229,7 @@ def train_and_evaluate(sales: pd.DataFrame, test_year: int | None = None, fast: 
 
     report: dict = {
         "backend": backend,
+        "profile": profile,
         "test_year": split.test_year,
         "train_sales": len(proper), "calibration_sales": len(calib), "test_sales": len(test),
         "features": FEATURES,

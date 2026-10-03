@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 John Luke NIKABOU (LucNIK)
 
-"""Command line: `python -m valia fetch|build|baseline|train|all`."""
+"""Command line: `python -m valia fetch|build|baseline|train|export|parity|all`."""
 
 from __future__ import annotations
 
@@ -75,14 +75,53 @@ def cmd_train(args) -> None:
 
     sales = load_table(Path(args.clean) / SALES.name)
     started = time.perf_counter()
-    model, intervals, report = train_and_evaluate(sales, args.test_year, fast=args.fast)
+    profile = "fast" if args.fast else args.profile
+    model, intervals, report = train_and_evaluate(sales, args.test_year, profile=profile)
     report["source"] = SOURCE_NAME
     report["training_seconds"] = round(time.perf_counter() - started, 1)
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    save_model(model, intervals, REPORTS_DIR)
-    (REPORTS_DIR / "model.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
-    (REPORTS_DIR / "model.md").write_text(model_markdown(report), encoding="utf-8")
+    folder = REPORTS_DIR if profile != "web" else REPORTS_DIR / "web"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_model(model, intervals, folder)
+    (folder / "model.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
+    (folder / "model.md").write_text(model_markdown(report), encoding="utf-8")
     print(model_markdown(report))
+
+
+def cmd_export(args) -> None:
+    """Static assets for the browser app, from the cleaned sales and the web model."""
+    from .baseline import segment_of
+    from .export import export_assets
+    from .treemodel import parse_lightgbm
+
+    folder = Path(args.model)
+    text_model = folder / "model.lgb.txt"
+    if not text_model.exists():
+        sys.exit(f"{text_model} not found: run `python -m valia train --profile web` (LightGBM) first")
+    forest = parse_lightgbm(text_model.read_text())
+    anchors = json.loads((folder / "anchors.json").read_text())
+    intervals = json.loads((folder / "intervals.json").read_text())
+    report = json.loads((folder / "model.json").read_text())
+    report["version"] = __version__
+    sales = load_table(Path(args.clean) / SALES.name)
+    train = sales[sales["year"] < report["test_year"]]
+    per_commune = sales.groupby("code_commune", as_index=False)[["dep"]].first()
+    segments = dict(zip(per_commune["code_commune"].astype(str), segment_of(train, per_commune), strict=True))
+    communes, stations = (None, None) if args.no_enrich else fetch_references()
+    started = time.perf_counter()
+    summary = export_assets(sales, forest, anchors, intervals, segments, communes, stations, report, Path(args.out))
+    print(f"[export] {summary} in {time.perf_counter() - started:.1f}s -> {args.out}/data")
+
+
+def cmd_parity(args) -> None:
+    """Reference estimates the browser must reproduce (`node --test web/test`)."""
+    from .inference import Assets, fixtures, sample_queries
+
+    assets = Assets(Path(args.assets))
+    rows = fixtures(assets, sample_queries(assets, args.n, args.seed))
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rows, separators=(",", ":")))
+    print(f"[parity] {len(rows)} reference estimates -> {out}")
 
 
 def save_model(model, intervals, folder: Path) -> None:
@@ -104,14 +143,15 @@ def model_markdown(report: dict) -> str:
         return "✅" if ok else "❌"
 
     o = report["model"]["overall"]
-    lines = [f"# Model — test year {report['test_year']} ({report['backend']})", "",
-             f"Train {report['train_sales']:,} · calibration {report['calibration_sales']:,} · "
-             f"test {report['test_sales']:,} sales.", "",
-             f"- Accuracy: MAE(log) **{o['mae_log']}** vs target {report['target_mae_log']} "
-             f"({report['improvement_vs_commune_pct']} % better than the commune median) "
-             f"{verdict(report['passes']['accuracy'])}",
-             f"- Intervals: **{o['coverage_pct']} %** of 2025 prices inside the 80 % range "
-             f"(target 78-82 %) {verdict(report['passes']['coverage'])}", "",
+    title = f"# Model — test year {report['test_year']} ({report['backend']}, {report.get('profile', 'full')})"
+    lines = [title, "",
+             (f"Train {report['train_sales']:,} · calibration {report['calibration_sales']:,} · "
+              f"test {report['test_sales']:,} sales."), "",
+             (f"- Accuracy: MAE(log) **{o['mae_log']}** vs target {report['target_mae_log']} "
+              f"({report['improvement_vs_commune_pct']} % better than the commune median) "
+              f"{verdict(report['passes']['accuracy'])}"),
+             (f"- Intervals: **{o['coverage_pct']} %** of {report['test_year']} prices inside the 80 % range "
+              f"(target 78-82 %) {verdict(report['passes']['coverage'])}"), "",
              "| Scope | Sales | MdAPE % | Within 10 % | MAE € | Coverage % | Range width % |",
              "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     rows = [("France", o)] + [(s, report["model"]["by_segment"][s]) for s in SEGMENTS
@@ -163,6 +203,18 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--clean", default=str(CLEAN_DIR))
         p.add_argument("--test-year", type=int, default=None)
         p.add_argument("--fast", action="store_true", help="small model, for smoke tests")
+        p.add_argument("--profile", choices=("full", "web"), default="full",
+                       help="full: best accuracy; web: compact model shipped in the browser app")
+    p = sub.add_parser("export", help="static assets for the browser app")
+    p.add_argument("--clean", default=str(CLEAN_DIR))
+    p.add_argument("--model", default=str(REPORTS_DIR / "web"), help="folder of the web model")
+    p.add_argument("--out", default="web", help="the app folder; assets go to <out>/data")
+    p.add_argument("--no-enrich", action="store_true")
+    p = sub.add_parser("parity", help="reference estimates for the browser tests")
+    p.add_argument("--assets", default="web")
+    p.add_argument("--n", type=int, default=1000)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--out", default="web/test/fixtures/parity.json")
     args = parser.parse_args(argv)
 
     if args.command == "fetch":
@@ -173,6 +225,10 @@ def main(argv: list[str] | None = None) -> int:
         cmd_baseline(args)
     elif args.command == "train":
         cmd_train(args)
+    elif args.command == "export":
+        cmd_export(args)
+    elif args.command == "parity":
+        cmd_parity(args)
     else:
         cmd_fetch(args)
         cmd_build(args)

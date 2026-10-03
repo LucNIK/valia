@@ -80,3 +80,40 @@ def market(years=(2021, 2022, 2023, 2024, 2025), per_year=400, seed=7) -> pd.Dat
                             land=float(rng.integers(200, 2_000)) if kind == "Maison" else None,
                             lat=clat + rng.normal(0, 0.01), lon=clon + rng.normal(0, 0.01)))
     return pd.DataFrame(rows, columns=COLUMNS)
+
+
+def random_forest(features: list[str], n_trees: int = 30, depth: int = 4, seed: int = 3,
+                  centers: dict[str, tuple[float, float]] | None = None):
+    """A random tree ensemble in the binary format, exercising every decision type.
+    `centers` gives (mean, spread) per feature so thresholds fall where real values do."""
+    from valia.treemodel import Forest
+
+    rng = np.random.default_rng(seed)
+    node_start, leaf_start, tree_nodes = [], [], []
+    feature, decision, threshold, left, right, value = [], [], [], [], [], []
+    for t in range(n_trees):
+        node_start.append(len(feature))
+        leaf_start.append(len(value))
+        if t == 0:                                    # a single-leaf tree, as LightGBM can emit
+            tree_nodes.append(0)
+            value.append(0.01)
+            continue
+        n_internal = 2 ** depth - 1
+        tree_nodes.append(n_internal)
+        for i in range(n_internal):
+            f = int(rng.integers(0, len(features)))
+            mean, spread = (centers or {}).get(features[f], (0.0, 2.0))
+            feature.append(f)
+            decision.append(int(rng.choice([0, 2, 4, 6, 8, 10])))     # missing none/zero/NaN x default side
+            threshold.append(float(mean + rng.normal(0, spread)))
+            kids = [2 * i + 1, 2 * i + 2]
+            # children past the internal nodes are leaves, encoded as ~leaf_index
+            left.append(kids[0] if kids[0] < n_internal else ~(kids[0] - n_internal))
+            right.append(kids[1] if kids[1] < n_internal else ~(kids[1] - n_internal))
+        value.extend(rng.normal(0, 0.05, n_internal + 1).tolist())
+    return Forest(features=list(features),
+                  node_start=np.array(node_start, dtype=np.int32), leaf_start=np.array(leaf_start, dtype=np.int32),
+                  tree_nodes=np.array(tree_nodes, dtype=np.int32), feature=np.array(feature, dtype=np.uint8),
+                  decision=np.array(decision, dtype=np.uint8), threshold=np.array(threshold, dtype=np.float64),
+                  left=np.array(left, dtype=np.int32), right=np.array(right, dtype=np.int32),
+                  value=np.array(value, dtype=np.float64))
