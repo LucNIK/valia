@@ -109,6 +109,10 @@ class TrainingTest(unittest.TestCase):
         for reference in ("commune_median", "neighbourhood_prior"):
             self.assertLess(model, self.report["baselines"][reference]["mae_log"], reference)
 
+    def test_anchor_prefers_comparable_sales(self) -> None:
+        sample = self.sales.dropna(subset=["knn_prior"]).head(5)
+        np.testing.assert_allclose(self.model.anchor.level(sample).to_numpy(), sample["knn_prior"].to_numpy())
+
     def test_prediction_is_anchor_plus_gap(self) -> None:
         sample = self.sales.tail(20)
         level = self.model.anchor.level(sample)

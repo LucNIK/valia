@@ -21,7 +21,7 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | Version | Scope | Exit criterion | State |
 | --- | --- | --- | --- |
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
-| v0.2 | Open-data enrichment, gradient-boosted model anchored on recent prices, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **In progress** — awaiting the first nationwide training run |
+| v0.2 | Open-data enrichment, gradient-boosted model anchored on recent prices, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **In progress** — run 1: −16.8 % error vs commune median (target −25 %), 81.4 % interval coverage ✅ |
 | v0.3 | Web MVP: address, estimate, range, 5 comparable sales, Method page | Browser and Python agree on 1 000 homes | Planned |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
 
@@ -62,8 +62,9 @@ Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2
 2. **Clean** — a DVF sale spans several rows. A sale is kept only when it is a plain sale (`Vente`) of
    exactly one apartment or one house, possibly with a garage or cellar, and nothing commercial.
    Surfaces, prices and price per m² must be plausible. Every rule is counted in `reports/funnel.json`.
-3. **Features** — for each sale, the median price per m² of the earlier sales in its ~550 m cell and
-   in its commune, over the previous 365 days.
+3. **Features** — for each sale, using earlier sales only: median price per m² over the previous 365 days
+   in its ~550 m cell, ~2.2 km cell and commune, for all homes and for the same property type; and the
+   10 nearest comparable sales of the same type over the previous 24 months.
 4. **Enrichment** — commune population, density, INSEE density grid and level of services
    ("Communes et villes de France", data.gouv.fr), and the distance to the nearest railway station
    (SNCF). Optional by design: if a source is unavailable, its columns stay empty and the model still runs.

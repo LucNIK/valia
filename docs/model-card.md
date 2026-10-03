@@ -50,14 +50,33 @@ the commune median is better in rural areas and for houses, where ~550 m cells h
 
 ## Model (v0.2)
 
-*Pending the first nationwide training run.*
-
-- Target: log price per m²; prediction = recent neighbourhood anchor + learned gap.
-- Inputs: property type, surface, rooms, m² per room, land, coordinates, month, anchor, neighbourhood and
-  commune priors with their sample sizes, commune population and density, INSEE density grid, level of
-  services, distance to the nearest station.
+- Target: log price per m²; prediction = recent anchor + learned gap (LightGBM, L1 loss).
 - Intervals: split conformal at 80 %, calibrated on the last three months of the training years, one
   quantile per segment × property type (global quantile for groups under 200 sales).
+
+### Run 1 — v0.2.0 (3 October 2026)
+
+Train 3,271,761 · calibration 191,908 · test 800,229 sales (2025). Enrichment coverage ≥ 98.9 %.
+
+| Scope | MAE(log) model | MAE(log) commune median | Gain | 80 % range coverage |
+| --- | ---: | ---: | ---: | ---: |
+| **France** | **0.2371** | 0.2851 | −16.8 % | **81.4 %** ✅ |
+| Paris | 0.1950 | 0.2207 | −11.6 % | 81.5 % |
+| Large cities | 0.2078 | 0.2722 | −23.7 % | 81.4 % |
+| Mid-size cities | 0.2242 | 0.2675 | −16.2 % | 81.4 % |
+| Rural | 0.2922 | 0.3252 | −10.1 % | 81.3 % |
+
+Median absolute error on the price: **16.2 %** for France (commune median: 20.7 %).
+
+**Verdict: intervals pass, accuracy does not** (target −25 %). The weakest segments are rural areas
+and houses: the neighbourhood anchor mixed houses and flats and was missing where cells hold few
+sales. Per the delivery plan, the web app waits until the accuracy target is met.
+
+### v0.2.1 — changes under test
+
+- Same-type priors (a house is compared with houses) at ~550 m, ~2.2 km and commune level.
+- Comparable sales: median price, distance and age of the 10 nearest earlier sales of the same type
+  over 24 months, excluding the sale's own month. The anchor now starts from these comparables.
 
 ## Known limits
 

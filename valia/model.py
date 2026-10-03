@@ -32,8 +32,13 @@ from .enrich import ENRICH_COLUMNS
 
 FEATURES = [
     "is_house", "surface_log", "rooms", "m2_per_room", "land_log", "lat", "lon", "months",
-    "anchor", "cell_prior", "cell_n_log", "commune_prior", "commune_n_log", *ENRICH_COLUMNS,
+    "anchor", "cell_prior", "cell_n_log", "commune_prior", "commune_n_log",
+    "cell_type_prior", "cell_type_n_log", "cell2_type_prior", "cell2_type_n_log",
+    "commune_type_prior", "commune_type_n_log", "knn_prior", "knn_km", "knn_age", *ENRICH_COLUMNS,
 ]
+# Most specific first: comparable sales, then same-type priors, then all-type priors.
+ANCHOR_CHAIN = ("knn_prior", "cell_type_prior", "cell_prior", "cell2_type_prior",
+                "commune_type_prior", "commune_prior")
 CALIBRATION_MONTHS = 3
 COVERAGE = 0.80
 MIN_GROUP_SIZE = 200      # smaller calibration groups fall back to the global quantile
@@ -42,7 +47,7 @@ EPOCH = pd.Timestamp(2021, 1, 1)
 
 @dataclass
 class Anchor:
-    """Reference level per sale: recent cell prior, else recent commune prior, else static medians."""
+    """Reference level per sale: the first available recent price in ANCHOR_CHAIN, else static medians."""
     commune: dict[str, float] = field(default_factory=dict)
     dep: dict[str, float] = field(default_factory=dict)
     france: float = float("nan")
@@ -54,8 +59,12 @@ class Anchor:
                    france=float(train["log_ppm2"].median()))
 
     def level(self, frame: pd.DataFrame) -> pd.Series:
+        level = pd.Series(np.nan, index=frame.index)
+        for col in ANCHOR_CHAIN:
+            if col in frame:
+                level = level.fillna(frame[col])
         static = frame["code_commune"].map(self.commune).fillna(frame["dep"].map(self.dep)).fillna(self.france)
-        return frame["cell_prior"].fillna(frame["commune_prior"]).fillna(static).astype(float)
+        return level.fillna(static).astype(float)
 
 
 class AnchoredModel:
@@ -81,9 +90,11 @@ def design(frame: pd.DataFrame, level: pd.Series | None = None) -> pd.DataFrame:
     X["lat"], X["lon"] = frame["lat"], frame["lon"]
     X["months"] = (frame["date"].dt.year - EPOCH.year) * 12 + frame["date"].dt.month - 1
     X["anchor"] = level if level is not None else np.nan
-    X["cell_prior"], X["commune_prior"] = frame["cell_prior"], frame["commune_prior"]
-    X["cell_n_log"] = np.log1p(frame["cell_n"])
-    X["commune_n_log"] = np.log1p(frame["commune_n"])
+    for prefix in ("cell", "commune", "cell_type", "cell2_type", "commune_type"):
+        X[f"{prefix}_prior"] = frame.get(f"{prefix}_prior", np.nan)
+        X[f"{prefix}_n_log"] = np.log1p(frame.get(f"{prefix}_n", np.nan))
+    for col in ("knn_prior", "knn_km", "knn_age"):
+        X[col] = frame.get(col, np.nan)
     for col in ENRICH_COLUMNS:
         X[col] = frame.get(col, np.nan)
     return X[FEATURES].astype("float32")

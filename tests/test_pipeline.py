@@ -73,6 +73,38 @@ class FeatureLeakageTest(unittest.TestCase):
         self.assertEqual(feats.loc["s3", "cell_n"], 0)
 
 
+class ComparablesTest(unittest.TestCase):
+    def _frame(self, rows):
+        return pd.DataFrame({
+            "date": pd.to_datetime([r[0] for r in rows]), "type": [r[1] for r in rows],
+            "lat": [48.85 + r[2] for r in rows], "lon": [2.35] * len(rows),
+            "log_ppm2": np.log([r[3] for r in rows]),
+        })
+
+    def test_only_earlier_months_of_the_same_type_are_used(self) -> None:
+        from valia.features import knn_comparables
+
+        rows = [("2024-01-10", "A", 0.000, 4_000), ("2024-01-20", "A", 0.001, 4_000),
+                ("2024-02-05", "A", 0.002, 4_000),
+                ("2024-02-10", "M", 0.000, 1_000), ("2024-02-11", "M", 0.000, 1_000),
+                ("2024-03-01", "A", 0.000, 9_000),   # same month as the query: must be ignored
+                ("2024-03-15", "A", 0.000, 5_000),   # the query sale itself
+                ("2024-04-01", "A", 0.000, 7_000)]   # later: must be ignored
+        feats = knn_comparables(self._frame(rows), k=3)
+        query = feats.iloc[6]
+        self.assertAlmostEqual(np.exp(query["knn_prior"]), 4_000)   # the three flats of Jan-Feb only
+        self.assertEqual(query["knn_age"], 2)                         # ages 2, 2 and 1 months
+        self.assertTrue(np.isnan(feats.iloc[0]["knn_prior"]))         # nothing earlier yet
+
+    def test_distance_is_reported_in_km(self) -> None:
+        from valia.features import knn_comparables
+
+        rows = [("2024-01-01", "A", 0.00, 3_000), ("2024-01-02", "A", 0.00, 3_000),
+                ("2024-01-03", "A", 0.00, 3_000), ("2024-02-01", "A", 0.01, 3_000)]
+        feats = knn_comparables(self._frame(rows), k=3)
+        self.assertAlmostEqual(feats.iloc[3]["knn_km"], 1.11, delta=0.02)   # 0.01° of latitude
+
+
 class EvaluationTest(unittest.TestCase):
     def setUp(self) -> None:
         sales, _ = clean(synthetic.market())
