@@ -8,3 +8,7 @@ data/
 reports/
 .pytest_cache/
 .ruff_cache/
+web/node_modules/
+web/test/fixtures/
+web/assets/fonts/
+_site/

@@ -1,0 +1,283 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 John Luke NIKABOU (LucNIK)
+// @ts-check
+
+import { Assets, httpLoader } from "./assets.js";
+import * as fmt from "./format.js";
+import { searchAddress } from "./geocode.js";
+import { departmentOf } from "./geo.js";
+import { estimate } from "./infer.js";
+
+/** Départements DVF does not cover (Alsace-Moselle land registry, Mayotte). */
+const NOT_COVERED = new Set(["57", "67", "68", "976"]);
+const KM_PER_DEG = 111.195;
+
+/**
+ * @template {HTMLElement} T
+ * @param {string} id
+ * @returns {T}
+ */
+function $(id) {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`#${id} missing`);
+  return /** @type {T} */ (el);
+}
+
+const form = /** @type {HTMLFormElement} */ ($("form"));
+const address = /** @type {HTMLInputElement} */ ($("address"));
+const list = /** @type {HTMLUListElement} */ ($("suggestions"));
+const surface = /** @type {HTMLInputElement} */ ($("surface"));
+const rooms = /** @type {HTMLInputElement} */ ($("rooms"));
+const land = /** @type {HTMLInputElement} */ ($("land"));
+const landField = $("land-field");
+const error = $("error");
+const submit = /** @type {HTMLButtonElement} */ ($("submit"));
+const result = $("result");
+
+const assetsPromise = Assets.open(httpLoader(new URL("./", location.href)));
+assetsPromise.then(showAccuracy).catch(() => showError("Les données n'ont pas pu être chargées. Réessayez plus tard."));
+
+/** @type {import("./geocode.js").Place | null} */
+let place = null;
+/** @type {import("./geocode.js").Place[]} */
+let options = [];
+let active = -1;
+/** @type {AbortController | null} */
+let pending = null;
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let timer;
+
+// ---- address autocomplete (ARIA combobox)
+
+address.addEventListener("input", () => {
+  place = null;
+  clearTimeout(timer);
+  const text = address.value.trim();
+  if (text.length < 3) return closeList();
+  timer = setTimeout(async () => {
+    pending?.abort();
+    pending = new AbortController();
+    try {
+      options = await searchAddress(text, pending.signal);
+      renderList();
+    } catch (err) {
+      if (/** @type {Error} */ (err).name !== "AbortError") closeList();
+    }
+  }, 180);
+});
+
+address.addEventListener("keydown", (e) => {
+  if (list.hidden || !options.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    active = (active + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    renderList();
+  } else if (e.key === "Enter" && active >= 0) {
+    e.preventDefault();
+    choose(options[active]);
+  } else if (e.key === "Escape") {
+    closeList();
+  }
+});
+address.addEventListener("blur", () => setTimeout(closeList, 120));
+
+function renderList() {
+  list.replaceChildren(...options.map((o, i) => {
+    const li = document.createElement("li");
+    li.id = `opt-${i}`;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(i === active));
+    li.textContent = o.label;
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      choose(o);
+    });
+    return li;
+  }));
+  list.hidden = options.length === 0;
+  address.setAttribute("aria-expanded", String(!list.hidden));
+  if (active >= 0) address.setAttribute("aria-activedescendant", `opt-${active}`);
+  else address.removeAttribute("aria-activedescendant");
+}
+
+function closeList() {
+  options = [];
+  active = -1;
+  list.hidden = true;
+  list.replaceChildren();
+  address.setAttribute("aria-expanded", "false");
+  address.removeAttribute("aria-activedescendant");
+}
+
+/** @param {import("./geocode.js").Place} p */
+function choose(p) {
+  place = p;
+  address.value = p.label;
+  closeList();
+  surface.focus();
+}
+
+// ---- form
+
+/** @returns {"A" | "M"} */
+function selectedType() {
+  const checked = /** @type {HTMLInputElement | null} */ (form.querySelector('input[name="type"]:checked'));
+  return checked?.value === "M" ? "M" : "A";
+}
+
+for (const radio of form.querySelectorAll('input[name="type"]')) {
+  radio.addEventListener("change", () => { landField.hidden = selectedType() !== "M"; });
+}
+
+/** @param {string} message */
+function showError(message) {
+  error.textContent = message;
+  error.hidden = false;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  error.hidden = true;
+  if (!place && options.length) choose(options[0]);
+  if (!place) return showError("Choisissez une adresse dans la liste.");
+  const s = Number(surface.value);
+  const r = Number(rooms.value);
+  const l = Number(land.value || 0);
+  if (!(s >= 9 && s <= 1000)) return showError("La surface doit être comprise entre 9 et 1 000 m².");
+  if (!(Number.isInteger(r) && r >= 1 && r <= 20)) return showError("Le nombre de pièces doit être compris entre 1 et 20.");
+  if (!(l >= 0)) return showError("La surface du terrain ne peut pas être négative.");
+  if (NOT_COVERED.has(departmentOf(place.citycode))) {
+    return showError("Les ventes de ce département ne sont pas publiées dans DVF (Alsace, Moselle, Mayotte) : pas d'estimation possible.");
+  }
+  const where = place;
+  const type = selectedType();
+  submit.disabled = true;
+  try {
+    const assets = await assetsPromise;
+    const out = await estimate(assets, { lat: where.lat, lon: where.lon, type, surface: s, rooms: r, land: l,
+                                         citycode: where.citycode });
+    render(assets, out, type, where);
+    const state = new URLSearchParams({ a: where.label, c: where.citycode, lat: String(where.lat),
+                                        lon: String(where.lon), t: type, s: String(s), r: String(r), l: String(l) });
+    history.replaceState(null, "", `#${state.toString()}`);
+  } catch (err) {
+    console.error(err);
+    showError("L'estimation a échoué. Réessayez dans un instant.");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+// ---- result
+
+/**
+ * @param {Assets} assets
+ * @param {Awaited<ReturnType<typeof estimate>>} out
+ * @param {"A" | "M"} type
+ * @param {import("./geocode.js").Place} where
+ */
+function render(assets, out, type, where) {
+  $("price").textContent = fmt.price(out.price);
+  $("ppm2").textContent = fmt.perM2(out.priceM2);
+  $("low").textContent = fmt.price(out.low);
+  $("high").textContent = fmt.price(out.high);
+  const span = Math.log(out.high) - Math.log(out.low);
+  $("marker").style.left = `${((Math.log(out.price) - Math.log(out.low)) / span) * 100}%`;
+
+  const f = out.features;
+  const kinds = type === "M" ? "de maisons" : "d'appartements";
+  const explain = $("explain");
+  /** @type {Record<string, string>} */
+  const sources = {
+    knn_prior: `la médiane des ${assets.meta.knn.k} ventes ${kinds} les plus proches, situées à ${fmt.distance(f.knn_km)} ` +
+      `en médiane et vendues il y a ${Math.round(f.knn_age)} mois en médiane`,
+    cell_type_prior: `les ventes ${kinds} des douze derniers mois dans un rayon d'environ 500 m`,
+    cell_prior: "les ventes des douze derniers mois dans un rayon d'environ 500 m",
+    cell2_type_prior: `les ventes ${kinds} des douze derniers mois dans un rayon d'environ 2 km`,
+    commune_type_prior: `les ventes ${kinds} des douze derniers mois dans la commune`,
+    commune_prior: "les ventes des douze derniers mois dans la commune",
+  };
+  const weak = !(out.anchorSource in sources);
+  explain.className = weak ? "note warn" : "note";
+  const accuracy = assets.meta.accuracy?.by_segment?.[out.segment]?.mdape_pct;
+  explain.textContent = weak
+    ? "Il y a trop peu de ventes récentes autour de cette adresse : l'estimation part d'un niveau moyen " +
+      "(commune, département ou France) et reste peu fiable."
+    : `Point de départ : ${sources[out.anchorSource]}. Le modèle ajuste ensuite ce niveau selon la surface, ` +
+      "le nombre de pièces, le terrain, la dynamique du quartier et la distance à une gare." +
+      (accuracy ? ` Dans ce type de zone (${out.segment.toLowerCase()}), l'écart médian avec le prix de vente ` +
+                  `réel a été de ${String(accuracy).replace(".", ",")} % lors du test sur ${assets.meta.accuracy.test_year}.` : "");
+
+  renderComparables(out.comparables, where);
+  result.hidden = false;
+  result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+/**
+ * @param {import("./infer.js").Sale[]} comps
+ * @param {{lat: number, lon: number}} at
+ */
+function renderComparables(comps, at) {
+  $("comps-card").hidden = comps.length === 0;
+  $("comps").replaceChildren(...comps.map((c) => {
+    const tr = document.createElement("tr");
+    for (const text of [fmt.distance(c.km), fmt.month(c.m), `${Math.round(c.surface)} m²`, fmt.price(c.price),
+                        fmt.perM2(c.price / c.surface)]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+    return tr;
+  }));
+
+  const NS = "http://www.w3.org/2000/svg";
+  /** @param {string} tag @param {Record<string, string | number>} attrs */
+  const svg = (tag, attrs) => {
+    const el = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    return el;
+  };
+  const cos = Math.cos((at.lat * Math.PI) / 180);
+  const points = comps.map((c) => [(c.lon - at.lon) * cos * KM_PER_DEG, (c.lat - at.lat) * KM_PER_DEG]);
+  const reach = Math.max(0.05, ...points.map(([x, y]) => Math.hypot(x, y)));
+  const scale = 50 / reach;
+  $("radar").replaceChildren(
+    svg("circle", { class: "ring", cx: 0, cy: 0, r: 25 }),
+    svg("circle", { class: "ring", cx: 0, cy: 0, r: 50 }),
+    ...points.map(([x, y]) => svg("circle", { class: "sale", cx: (x * scale).toFixed(1), cy: (-y * scale).toFixed(1), r: 3 })),
+    svg("circle", { class: "me", cx: 0, cy: 0, r: 5 }),
+  );
+}
+
+/** @param {Assets} assets */
+function showAccuracy(assets) {
+  const a = assets.meta.accuracy || {};
+  const [y, m] = assets.meta.data_through.split("-").map(Number);
+  $("through").textContent = `, ventes jusqu'à ${fmt.month(y * 12 + m)}`;
+  if (a.mdape_pct) {
+    const n = a.test_sales ? `${Number(a.test_sales).toLocaleString("fr-FR")} ` : "";
+    const cover = a.coverage_pct ? `, prix réel dans la fourchette ${String(a.coverage_pct).replace(".", ",")} % du temps` : "";
+    $("accuracy").textContent = `Précision mesurée sur ${n}ventes de ${a.test_year} jamais vues par le modèle : ` +
+      `écart médian de ${String(a.mdape_pct).replace(".", ",")} %${cover}.`;
+  }
+}
+
+// ---- shareable link: #a=label&c=citycode&lat=..&lon=..&t=A&s=65&r=3&l=0
+
+(function restore() {
+  if (!location.hash) return;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const lat = Number(p.get("lat"));
+  const lon = Number(p.get("lon"));
+  if (!p.get("a") || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  place = { label: String(p.get("a")), context: "", citycode: String(p.get("c") || ""), type: "", lat, lon };
+  address.value = place.label;
+  if (p.get("t") === "M") {
+    /** @type {HTMLInputElement} */ ($("type-m")).checked = true;
+    landField.hidden = false;
+  }
+  surface.value = p.get("s") || "";
+  rooms.value = p.get("r") || "";
+  land.value = p.get("l") || "";
+  if (surface.value && rooms.value) form.requestSubmit();
+})();

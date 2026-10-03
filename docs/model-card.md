@@ -3,7 +3,7 @@
 
 # Model card — Valia
 
-*Filled in by each release. v0.1 publishes the reference estimators only; the model arrives in v0.2.*
+*Filled in by each release. Latest: v0.3 — the model is published in the web app.*
 
 Last full run: DVF 2021–2025, all covered départements, test year **2025** (800,229 sales never seen in training).
 
@@ -72,11 +72,44 @@ Median absolute error on the price: **16.2 %** for France (commune median: 20.7 
 and houses: the neighbourhood anchor mixed houses and flats and was missing where cells hold few
 sales. Per the delivery plan, the web app waits until the accuracy target is met.
 
-### v0.2.1 — changes under test
+### Run 2 — v0.2.1 (3 October 2026)
 
-- Same-type priors (a house is compared with houses) at ~550 m, ~2.2 km and commune level.
-- Comparable sales: median price, distance and age of the 10 nearest earlier sales of the same type
-  over 24 months, excluding the sale's own month. The anchor now starts from these comparables.
+Same data and split as run 1. Changes: same-type priors (a house is compared with houses) at ~550 m,
+~2.2 km and commune level; comparable sales (median price, distance and age of the 10 nearest earlier
+sales of the same type over 24 months, excluding the sale's own month), which now start the anchor.
+
+| Scope | Test sales | MAE(log) model | MAE(log) commune median | Gain | MdAPE | 80 % range coverage |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **France** | 800,229 | **0.2312** | 0.2851 | **−18.9 %** | **15.68 %** | **81.3 %** ✅ |
+| Paris | 28,884 | 0.1942 | 0.2207 | −12.0 % | 12.37 % | 81.2 % |
+| Large cities | 317,128 | 0.1986 | 0.2722 | −27.0 % | 13.95 % | 81.2 % |
+| Mid-size cities | 213,080 | 0.2191 | 0.2675 | −18.1 % | 14.82 % | 81.4 % |
+| Rural | 241,137 | 0.2892 | 0.3252 | −11.1 % | 20.15 % | 81.3 % |
+| Apartments | 352,727 | 0.1889 | — | −26.0 % | 13.08 % | 81.3 % |
+| Houses | 447,502 | 0.2645 | — | −14.3 % | 18.23 % | 81.4 % |
+
+Better than both references in every segment, with calibrated intervals everywhere; 34.0 % of
+estimates are within 10 % of the sale price. Top features by gain: surface, land, anchor, comparables.
+
+**Decision (v0.3).** The −25 % target is not met (−18.9 %). The model still beats the commune median
+and the neighbourhood prior in every segment, and its ranges are honest, so it ships with these
+numbers published in the app; −25 % stays the stated target. The remaining gap is mostly what DVF
+cannot see — condition, floor, energy rating — which v0.4 addresses with the BDNB building data.
+
+## Web model (v0.3)
+
+- The browser runs a compact LightGBM model (`--profile web`: 63 leaves, 800 trees) instead of the full
+  one (255 leaves, 3,000 trees, ~70 MB). It is trained, calibrated and evaluated on its own with the same
+  protocol; its accuracy is the one displayed in the app (`reports/web/model.md`).
+- Trees are exported to a compact binary format (`valia/treemodel.py`) evaluated in JavaScript with
+  LightGBM's exact decision rules (float32 inputs, missing-value routing).
+- An estimate uses the same features as training, as if the home were sold on the first day after the
+  data ends. `valia/inference.py` is the reference; the JavaScript mirrors it line by line.
+- **Exit criterion:** browser and Python agree on 1,000 homes (features, price and range to 10⁻⁹),
+  checked by the Data workflow on every release before the site is published, and on a synthetic market
+  by CI on every push.
+- Published data: per-commune and per-~2.2 km tile priors, and the sales of the last 24 months with
+  their position rounded to ~100 m and their date to the month; no address, parcel or identifier.
 
 ## Known limits
 

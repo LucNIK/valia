@@ -97,13 +97,15 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
     if communes is not None and len(communes):
         for row in communes.itertuples(index=False):
             profile[str(row.code)] = row
+    deps = frame.groupby("code_commune")["dep"].first()
+    parents = dict(zip(deps.index, parent_commune(deps.index.to_series()), strict=True))
     by_dep: dict[str, dict] = {}
-    for code, dep in frame.groupby("code_commune")["dep"].first().items():
+    for code, dep in deps.items():
         entry = {"seg": segments.get(code, "Rural"), "static": _num(anchor["commune"].get(code)),
                  "prior": commune_priors.get(code, {})}
         p = profile.get(code)
         if p is None:   # arrondissements of Paris, Lyon, Marseille share their city's profile
-            p = profile.get(str(parent_commune(pd.Series([code])).iloc[0]))
+            p = profile.get(str(parents[code]))
         if p is not None:
             entry["pop_log"] = _num(np.log1p(getattr(p, "population", np.nan)))
             entry["density_log"] = _num(np.log1p(getattr(p, "density", np.nan)))

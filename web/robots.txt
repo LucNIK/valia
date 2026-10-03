@@ -1,0 +1,3 @@
+# Valia — the sale records under /data/ come from DVF, whose terms forbid indexing them.
+User-agent: *
+Disallow: /data/

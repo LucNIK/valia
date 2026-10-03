@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT · Copyright (c) 2026 John Luke NIKABOU (LucNIK) -->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Valia — estimation immobilière</title>
+  <meta name="description" content="Estimez le prix d'un appartement ou d'une maison en France à partir des ventes réelles (DVF). Gratuit, sans compte, calculé dans votre navigateur.">
+  <meta name="author" content="John Luke NIKABOU (LucNIK)">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://data.geopf.fr; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0c0f" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="modulepreload" href="app/main.js">
+  <script src="app/theme.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="./" aria-label="Valia, accueil">valia<i></i></a>
+      <nav>
+        <a href="methode.html">Méthode</a>
+        <a href="https://github.com/LucNIK/valia" rel="noopener">Code</a>
+        <button class="icon-btn" type="button" id="theme" aria-label="Changer de thème">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z"/></svg>
+        </button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Le prix d'un logement, estimé sur les ventes réelles.</h1>
+        <p class="lede">Toute la France hors Alsace, Moselle et Mayotte, à partir des ventes publiées par l'État (DVF).
+          Gratuit et sans compte&nbsp;: le calcul se fait dans votre navigateur.</p>
+      </section>
+
+      <form class="card" id="form" novalidate>
+        <div class="combo">
+          <label for="address">Adresse</label>
+          <input id="address" type="text" autocomplete="off" spellcheck="false" placeholder="12 rue de la Paix, Paris"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions" required>
+          <ul id="suggestions" role="listbox" hidden></ul>
+        </div>
+        <div>
+          <span class="label" id="type-label">Type de bien</span>
+          <div class="seg" role="radiogroup" aria-labelledby="type-label">
+            <input type="radio" name="type" id="type-a" value="A" checked><label for="type-a">Appartement</label>
+            <input type="radio" name="type" id="type-m" value="M"><label for="type-m">Maison</label>
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="surface">Surface (m²)</label><input id="surface" type="number" inputmode="decimal" min="9" max="1000" step="1" placeholder="65" required></div>
+          <div><label for="rooms">Pièces</label><input id="rooms" type="number" inputmode="numeric" min="1" max="20" step="1" placeholder="3" required></div>
+          <div id="land-field" hidden><label for="land">Terrain (m²)</label><input id="land" type="number" inputmode="numeric" min="0" step="10" placeholder="400"></div>
+        </div>
+        <p class="error" id="error" role="alert" hidden></p>
+        <button class="primary" type="submit" id="submit">Estimer</button>
+      </form>
+
+      <section id="result" aria-live="polite" data-nosnippet hidden>
+        <div class="card">
+          <span class="label">Estimation</span>
+          <div class="price" id="price"></div>
+          <div class="sub"><strong id="ppm2"></strong> le m² · fourchette à 80&nbsp;%</div>
+          <div class="range" aria-hidden="true"><span id="marker"></span></div>
+          <div class="range-legend"><span id="low"></span><span id="high"></span></div>
+        </div>
+        <div class="card">
+          <h2>Comment ce prix est obtenu</h2>
+          <p class="note" id="explain"></p>
+        </div>
+        <div class="card" id="comps-card">
+          <h2>Ventes comparables les plus proches</h2>
+          <div class="comps">
+            <svg id="radar" viewBox="-60 -60 120 120" role="img" aria-label="Position des ventes comparables"></svg>
+            <table>
+              <thead><tr><th>Distance</th><th>Date</th><th>Surface</th><th>Prix</th><th>€/m²</th></tr></thead>
+              <tbody id="comps"></tbody>
+            </table>
+          </div>
+        </div>
+        <p class="note">Estimation indicative fondée sur les ventes passées, qui ne remplace pas l'avis d'un professionnel.
+          L'état du bien, l'étage, la vue ou le DPE ne sont pas encore pris en compte.</p>
+      </section>
+    </main>
+
+    <footer>
+      <p id="accuracy"></p>
+      <p>Données&nbsp;: <a href="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/" rel="noopener">DVF géolocalisées</a> (Etalab), Licence Ouverte 2.0<span id="through"></span>.
+        Adresses&nbsp;: Géoplateforme (IGN).</p>
+      <p>© 2026 John Luke NIKABOU (LucNIK) · <a href="https://github.com/LucNIK/valia/blob/main/LICENSE" rel="noopener">MIT</a> · <a href="https://ayuefu.com" rel="noopener">ayuefu.com</a></p>
+    </footer>
+  </div>
+  <script type="module" src="app/main.js"></script>
+</body>
+</html>

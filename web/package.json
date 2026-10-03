@@ -1,0 +1,16 @@
+{
+  "name": "valia-web",
+  "private": true,
+  "type": "module",
+  "description": "Valia in the browser: static app, no build step.",
+  "license": "MIT",
+  "author": "John Luke NIKABOU (LucNIK)",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.0"
+  }
+}

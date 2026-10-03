@@ -17,10 +17,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import __version__
 from .config import DATA_DIR
 
 REF_DIR = DATA_DIR / "ref"
-USER_AGENT = "valia/0.2 (+https://github.com/LucNIK/valia)"
+USER_AGENT = f"valia/{__version__} (+https://github.com/LucNIK/valia)"
 
 # "Communes et villes de France" (data.gouv.fr, Licence Ouverte 2.0), csv.gz resource.
 COMMUNES_URL = "https://www.data.gouv.fr/api/1/datasets/r/262afe2d-1c35-40da-ace0-a2eb595eaced"

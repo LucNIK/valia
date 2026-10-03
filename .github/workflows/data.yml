@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 John Luke NIKABOU (LucNIK)
 
-# Downloads DVF, rebuilds the clean dataset, measures the references and trains the model.
+# Downloads DVF, rebuilds the clean dataset, measures the references and trains the model,
+# then trains the compact web model, exports the site's data, checks that the browser reproduces
+# Python on 1,000 homes and publishes the site to GitHub Pages.
 # Runs on demand and after each DVF publication (April and October).
 name: Data
 
@@ -14,6 +16,10 @@ on:
       years:
         description: "Years to download, e.g. 2021-2025"
         default: "2021-2025"
+      publish:
+        description: "Publish the site to GitHub Pages"
+        type: boolean
+        default: true
   schedule:
     - cron: "17 6 20 4,10 *"   # the 20th of April and October, after the semi-annual DVF release
 
@@ -44,3 +50,69 @@ jobs:
           name: valia-clean-sales
           path: data/clean/
           retention-days: 30
+
+  site:
+    needs: pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@v5
+        with:
+          name: valia-clean-sales
+          path: data/clean/
+      - uses: actions/download-artifact@v5
+        with:
+          name: valia-reports
+          path: reports/
+      - name: Train the web model
+        run: python -m valia train --profile web
+      - name: Export the site's data
+        run: python -m valia export
+      - name: Reference estimates on 1,000 homes
+        run: python -m valia parity --n 1000
+      - name: Browser code reproduces Python on real data
+        working-directory: web
+        run: npm test
+        env:
+          VALIA_ASSETS: ${{ github.workspace }}/web
+      - name: Fonts (IBM Plex, self-hosted)
+        run: |
+          mkdir -p web/assets/fonts /tmp/fonts && cd /tmp/fonts
+          npm pack --silent @fontsource/ibm-plex-sans@5 @fontsource/ibm-plex-mono@5
+          for f in *.tgz; do tar -xzf "$f" && cp package/files/*-latin-{400,500,600}-normal.woff2 \
+            "$GITHUB_WORKSPACE/web/assets/fonts/" 2>/dev/null; rm -rf package; done
+          ls "$GITHUB_WORKSPACE/web/assets/fonts"
+      - name: Assemble the site
+        run: |
+          rsync -a --exclude test/ --exclude node_modules/ --exclude package.json --exclude tsconfig.json web/ _site/
+          cp reports/web/model.md _site/data/model.md
+          if [ -n "${{ vars.VALIA_DOMAIN }}" ]; then echo "${{ vars.VALIA_DOMAIN }}" > _site/CNAME; fi
+          du -sh _site; find _site -type f | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: valia-web-report
+          path: reports/web/
+      - if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
+        uses: actions/configure-pages@v5
+      - if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v4

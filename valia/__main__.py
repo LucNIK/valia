@@ -75,7 +75,7 @@ def cmd_train(args) -> None:
 
     sales = load_table(Path(args.clean) / SALES.name)
     started = time.perf_counter()
-    profile = "fast" if args.fast else args.profile
+    profile = "fast" if args.fast else getattr(args, "profile", "full")
     model, intervals, report = train_and_evaluate(sales, args.test_year, profile=profile)
     report["source"] = SOURCE_NAME
     report["training_seconds"] = round(time.perf_counter() - started, 1)

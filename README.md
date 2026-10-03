@@ -10,7 +10,7 @@
 Property price estimation for the whole of France, built on the public DVF sales records.
 A price, a calibrated range, the reasons behind it and the closest real sales — computed in the browser, with no server.
 
-`v0.1 · 4.26 M sales · data pipeline` · [Model card](docs/model-card.md) · MIT
+`v0.3 · 4.26 M sales · web app` · [Model card](docs/model-card.md) · MIT
 
 </div>
 
@@ -21,9 +21,11 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | Version | Scope | Exit criterion | State |
 | --- | --- | --- | --- |
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
-| v0.2 | Open-data enrichment, gradient-boosted model anchored on recent prices, conformal intervals per segment | 25 % lower error than the commune median; 80 % intervals cover 78–82 % of prices | **In progress** — run 1: −16.8 % error vs commune median (target −25 %), 81.4 % interval coverage ✅ |
-| v0.3 | Web MVP: address, estimate, range, 5 comparable sales, Method page | Browser and Python agree on 1 000 homes | Planned |
+| **v0.2** | Open-data enrichment, gradient-boosted model anchored on comparable sales, conformal intervals per segment | Beat both references in every segment; 80 % intervals cover 78–82 % of prices (target −25 % vs commune median) | **Done** — −18.9 % error vs commune median, better in every segment, 81.3 % coverage ✅ |
+| **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Ready** — parity tested in CI; the real 1,000-home check runs before each publication |
+| v0.4 | Building data (BDNB): energy rating, construction year | Close the gap to −25 % | Planned |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
+| v1.x | Accounts, saved homes, price alerts | — | Later |
 
 ## Why it is different
 
@@ -32,8 +34,10 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
   and rural France, because a national average hides where a model fails.
 - **No leakage, by construction.** Neighbourhood features only use sales that happened strictly before
   the one being described, over the previous 365 days. Tests prove it.
-- **Uncertainty you can see.** From v0.2, every estimate comes with a range calibrated by conformal
+- **Uncertainty you can see.** Every estimate comes with a range calibrated by conformal
   prediction, and its real coverage is published.
+- **No server.** The app is static: the model runs in the browser, and only the typed address leaves it,
+  to the national address service (IGN). The JavaScript is checked against the Python reference.
 - **Respectful of the data licence.** No exact address is ever displayed and no sale is indexable by
   search engines (see [SECURITY.md](SECURITY.md)).
 
@@ -51,7 +55,10 @@ cat reports/baseline.md
 | `python -m valia build` | Keeps single-dwelling sales, adds leakage-free neighbourhood features, writes `data/clean/sales` |
 | `python -m valia baseline` | Measures the reference estimators on the latest full year, writes `reports/baseline.{json,md}` |
 | `python -m valia train` | Trains the model, calibrates the 80 % intervals, writes `reports/model.{json,md}` and the model files |
-| `python -m valia all` | The four steps in a row |
+| `python -m valia train --profile web` | Trains the compact model shipped in the browser, writes `reports/web/` |
+| `python -m valia export` | Writes the app's static data to `web/data/` (priors, recent sales rounded to ~100 m, model) |
+| `python -m valia parity` | Reference estimates on 1,000 homes, which the browser must reproduce (`cd web && npm test`) |
+| `python -m valia all` | Fetch, build, baseline and train in a row |
 
 Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2025`.
 
@@ -74,6 +81,17 @@ Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2
    neighbourhood: trees cannot extrapolate in time, the anchor follows the market without leakage.
    Trained on every year but its last three months, calibrated on those three months (split conformal,
    per segment and property type), evaluated on the latest full year.
+
+## Web app
+
+`web/` is a static site with no build step: ES modules typed with JSDoc and checked by `tsc --strict`,
+IBM Plex, gold by day and bordeaux by night. To run it locally after `train --profile web` and `export`:
+
+```bash
+cd web && python -m http.server 8000   # http://localhost:8000
+```
+
+The Data workflow rebuilds everything after each DVF release and publishes the site to GitHub Pages.
 
 ## Data and licence
 
