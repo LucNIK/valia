@@ -81,9 +81,11 @@ nav a:hover, nav a[aria-current="page"] { color: var(--text); }
   border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
 .icon-btn:hover { border-color: var(--accent); }
 .icon-btn svg { width: 16px; height: 16px; }
-.icon-btn .moon { display: none; }
-:root[data-theme="dark"] .icon-btn .sun { display: none; }
-:root[data-theme="dark"] .icon-btn .moon { display: block; }
+.icon-btn svg { display: none; }
+:root:not([data-theme-mode]) .icon-btn .auto,
+:root[data-theme-mode="auto"] .icon-btn .auto,
+:root[data-theme-mode="light"] .icon-btn .sun,
+:root[data-theme-mode="dark"] .icon-btn .moon { display: block; }
 
 .hero { padding: 56px 0 28px; }
 h1 { font-size: clamp(28px, 5.4vw, 40px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 600; margin: 0 0 14px; }
