@@ -7,6 +7,7 @@ import * as fmt from "./format.js";
 import { parcelAt, searchAddress } from "./geocode.js";
 import { departmentOf } from "./geo.js";
 import { lastMonthOf, renderTrend } from "./chart.js";
+import { compare } from "./compare.js";
 import { estimate } from "./infer.js";
 
 /** Départements DVF does not cover (Alsace-Moselle land registry, Mayotte). */
@@ -47,6 +48,14 @@ assetsPromise.then(showAccuracy).catch(() => showError("Les données n'ont pas p
 let place = null;
 /** @type {Promise<void>} */
 let lookup = Promise.resolve();
+/**
+ * An estimate on screen, kept to be compared with the next one.
+ * @typedef {{label: string, type: "A" | "M", out: Awaited<ReturnType<typeof estimate>>, state: string}} Shown
+ */
+/** @type {Shown | null} */
+let current = null;
+/** @type {Shown | null} */
+let compared = null;
 /** @type {import("./geocode.js").Place[]} */
 let options = [];
 let active = -1;
@@ -201,10 +210,13 @@ form.addEventListener("submit", async (e) => {
     const out = await estimate(assets, { lat: where.lat, lon: where.lon, type, surface: s, rooms: r, land: l,
                                          citycode: where.citycode, parcel: where.parcel || "", building });
     render(assets, out, type, where);
-    const state = new URLSearchParams({ a: where.label, c: where.citycode, lat: String(where.lat),
+    const params = new URLSearchParams({ a: where.label, c: where.citycode, lat: String(where.lat),
                                         lon: String(where.lon), t: type, s: String(s), r: String(r), l: String(l),
                                         p: where.parcel || "", d: dpe.value, y: year.value });
-    history.replaceState(null, "", `#${state.toString()}`);
+    current = { label: where.label, type, out, state: params.toString() };
+    renderCompare(assets);
+    if (compared) params.set("vs", compared.state);
+    history.replaceState(null, "", `#${params.toString()}`);
   } catch (err) {
     console.error(err);
     showError("L'estimation a échoué. Réessayez dans un instant.");
@@ -260,6 +272,74 @@ function render(assets, out, type, where) {
   result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
+/**
+ * A log effect as a signed percentage: "+6,2 %", "−12 %".
+ * @param {number} g
+ */
+function pct(g) {
+  const v = (Math.exp(g) - 1) * 100;
+  const r = Math.abs(v) < 10 ? Math.round(v * 10) / 10 : Math.round(v);
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${String(Math.abs(r)).replace(".", ",")} %`;
+}
+
+/**
+ * One line of a breakdown: label and detail, a bar centred on zero, the value.
+ * @param {string} label @param {string} detail @param {string} value
+ * @param {number | null} g log effect (null: no bar) @param {number} scale log effect of a full half-bar
+ * @param {string} [cls]
+ */
+function whyRow(label, detail, value, g, scale, cls) {
+  const li = document.createElement("li");
+  if (cls) li.className = cls;
+  const what = document.createElement("div");
+  what.className = "what";
+  const strong = document.createElement("strong");
+  strong.textContent = label;
+  const span = document.createElement("span");
+  span.textContent = detail;
+  what.append(strong, span);
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  if (g !== null) {
+    const i = document.createElement("i");
+    const w = Math.min(50, (Math.abs(g) / scale) * 50);
+    i.className = g < 0 ? "down" : "";
+    i.style.left = `${g < 0 ? 50 - w : 50}%`;
+    i.style.width = `${w}%`;
+    bar.append(i);
+  }
+  bar.setAttribute("aria-hidden", "true");
+  const val = document.createElement("div");
+  val.className = "val";
+  val.textContent = value;
+  li.append(what, bar, val);
+  return li;
+}
+
+/**
+ * Short description of each group for one estimate ("62 m², 3 pièces", "classe E · construit en 1870"…).
+ * @param {Assets} assets
+ * @param {Awaited<ReturnType<typeof estimate>>} out
+ * @param {"A" | "M"} type
+ */
+function groupDetails(assets, out, type) {
+  const f = out.features;
+  const b = out.building;
+  const s = Math.exp(f.surface_log);
+  return /** @type {Record<string, string>} */ ({
+    size: `${Math.round(s)} m², ${f.rooms} pièce${f.rooms > 1 ? "s" : ""}`,
+    type: type === "M" ? "Maison" : "Appartement",
+    land: type === "M" && f.land_log > 0 ? `${Math.round(Math.expm1(f.land_log))} m²` : "Sans terrain",
+    building: [b.dpe_class ? `classe ${DPE_LETTERS[Number(b.dpe_class)]}` : "",
+               b.year_built ? `construit en ${b.year_built}` : "",
+               b.levels ? `${b.levels} niveau${Number(b.levels) > 1 ? "x" : ""}` : ""].filter(Boolean).join(" · ")
+              || "Non renseigné",
+    location: Number.isNaN(f.station_km) ? "Position dans le quartier" : `Gare à ${fmt.distance(f.station_km)}`,
+    date: `Marché de ${fmt.month(assets.meta.now_month - 1)}`,
+    area: "Ventes voisines, dynamique et profil de la commune",
+  });
+}
+
 /** Groups of meta.explain_groups, in plain words. */
 const GROUP_LABELS = /** @type {Record<string, string>} */ ({
   size: "Surface et pièces", type: "Type de bien", land: "Terrain", building: "Bâtiment",
@@ -277,26 +357,7 @@ const MIN_SHOWN = Math.log(1.005);          // effects under 0.5 % are grouped a
 function renderWhy(assets, out, type) {
   const f = out.features;
   const e = out.explanation;
-  const b = out.building;
-  const pct = (/** @type {number} */ g) => {
-    const v = (Math.exp(g) - 1) * 100;
-    const r = Math.abs(v) < 10 ? Math.round(v * 10) / 10 : Math.round(v);
-    return `${r > 0 ? "+" : r < 0 ? "−" : ""}${String(Math.abs(r)).replace(".", ",")} %`;
-  };
-  const s = Math.exp(f.surface_log);
-  const details = /** @type {Record<string, string>} */ ({
-    size: `${Math.round(s)} m², ${f.rooms} pièce${f.rooms > 1 ? "s" : ""}`,
-    type: type === "M" ? "Maison" : "Appartement",
-    land: type === "M" && f.land_log > 0 ? `${Math.round(Math.expm1(f.land_log))} m²` : "Sans terrain",
-    building: [b.dpe_class ? `classe ${DPE_LETTERS[Number(b.dpe_class)]}` : "",
-               b.year_built ? `construit en ${b.year_built}` : "",
-               b.levels ? `${b.levels} niveau${Number(b.levels) > 1 ? "x" : ""}` : ""].filter(Boolean).join(" · ")
-              || "Non renseigné",
-    location: Number.isNaN(f.station_km) ? "Position exacte dans le quartier"
-      : `Position exacte, gare à ${fmt.distance(f.station_km)}`,
-    date: `Marché de ${fmt.month(assets.meta.now_month - 1)}`,
-    area: "Ventes voisines, dynamique et profil de la commune",
-  });
+  const details = groupDetails(assets, out, type);
 
   const shown = Object.entries(e.groups).filter(([, g]) => Math.abs(g) >= MIN_SHOWN)
     .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
@@ -307,33 +368,7 @@ function renderWhy(assets, out, type) {
    * @param {string} label @param {string} detail @param {string} value @param {number | null} g
    * @param {string} [cls]
    */
-  const row = (label, detail, value, g, cls) => {
-    const li = document.createElement("li");
-    if (cls) li.className = cls;
-    const what = document.createElement("div");
-    what.className = "what";
-    const strong = document.createElement("strong");
-    strong.textContent = label;
-    const span = document.createElement("span");
-    span.textContent = detail;
-    what.append(strong, span);
-    const bar = document.createElement("div");
-    bar.className = "bar";
-    if (g !== null) {
-      const i = document.createElement("i");
-      const w = Math.min(50, (Math.abs(g) / scale) * 50);
-      i.className = g < 0 ? "down" : "";
-      i.style.left = `${g < 0 ? 50 - w : 50}%`;
-      i.style.width = `${w}%`;
-      bar.append(i);
-    }
-    bar.setAttribute("aria-hidden", "true");
-    const val = document.createElement("div");
-    val.className = "val";
-    val.textContent = value;
-    li.append(what, bar, val);
-    return li;
-  };
+  const row = (label, detail, value, g, cls) => whyRow(label, detail, value, g, scale, cls);
 
   const reference = Math.exp(f.anchor + e.base);
   const items = [row("Niveau de référence", "Prix au m² d'un logement type ici", fmt.perM2(reference), null, "ref")];
@@ -426,6 +461,129 @@ function showAccuracy(assets) {
   }
 }
 
+// ---- comparison of two homes
+
+const compareBanner = $("compare-banner");
+
+$("compare-btn").addEventListener("click", () => {
+  if (!current) return;
+  compared = current;
+  $("compare-a").textContent = `${compared.label} · ${fmt.price(compared.out.price)}`;
+  compareBanner.hidden = false;
+  result.hidden = true;
+  place = null;
+  for (const input of [address, surface, rooms, land, year]) input.value = "";
+  dpe.value = "";
+  hint.textContent = "";
+  window.scrollTo({ top: form.offsetTop - 80, behavior: "smooth" });
+  address.focus({ preventScroll: true });
+});
+
+$("compare-cancel").addEventListener("click", () => {
+  compared = null;
+  compareBanner.hidden = true;
+});
+
+$("compare-clear").addEventListener("click", () => {
+  compared = null;
+  $("compare-card").hidden = true;
+  compareBanner.hidden = true;
+  if (current) history.replaceState(null, "", `#${current.state}`);
+});
+
+/**
+ * Side by side: the home kept with "Comparer" (A) and the one just estimated (B).
+ * @param {Assets} assets
+ */
+function renderCompare(assets) {
+  const card = $("compare-card");
+  card.hidden = !compared || !current;
+  if (!compared || !current) return;
+  compareBanner.hidden = true;
+  const a = compared;
+  const b = current;
+
+  $("compare-grid").replaceChildren(...[["A", a], ["B", b]].map(([tag, h]) => {
+    const shown = /** @type {Shown} */ (h);
+    const box = document.createElement("div");
+    const f = shown.out.features;
+    const bld = shown.out.building;
+    const t = document.createElement("div");
+    t.className = "tag";
+    t.textContent = `Bien ${tag}`;
+    const where = document.createElement("div");
+    where.className = "where";
+    where.textContent = shown.label;
+    const big = document.createElement("div");
+    big.className = "big";
+    big.textContent = fmt.price(shown.out.price);
+    const dl = document.createElement("dl");
+    const facts = [
+      ["Prix au m²", fmt.perM2(shown.out.priceM2)],
+      ["Fourchette", `${fmt.price(shown.out.low)} – ${fmt.price(shown.out.high)}`],
+      ["Bien", `${shown.type === "M" ? "Maison" : "Appart."}, ${Math.round(Math.exp(f.surface_log))} m², ${f.rooms} p.`],
+      ["Bâtiment", [bld.dpe_class ? DPE_LETTERS[Number(bld.dpe_class)] : "", bld.year_built || ""].filter(Boolean).join(" · ") || "—"],
+      ["Tendance 1 an", shown.out.trend && shown.out.trend.yearChange !== null ? pct(Math.log1p(shown.out.trend.yearChange)) : "—"],
+    ];
+    for (const [k, v] of facts) {
+      const dt = document.createElement("dt");
+      dt.textContent = String(k);
+      const dd = document.createElement("dd");
+      dd.textContent = String(v);
+      dl.append(dt, dd);
+    }
+    box.append(t, where, big, dl);
+    return box;
+  }));
+
+  const c = compare(a.out, b.out);
+  const euros = b.out.price - a.out.price;
+  const gap = $("compare-gap");
+  gap.replaceChildren();
+  const lead = document.createTextNode(Math.abs(c.price) < 0.005 ? "Les deux biens valent à peu près le même prix "
+    : `Le bien B est estimé ${c.price > 0 ? "plus cher" : "moins cher"} de `);
+  const strong = document.createElement("strong");
+  strong.textContent = Math.abs(c.price) < 0.005 ? "" : `${fmt.price(Math.abs(euros))} (${pct(Math.log1p(c.price))})`;
+  gap.append(lead, strong, document.createTextNode(`, soit ${pct(Math.log1p(c.priceM2))} au m².`));
+
+  const da = groupDetails(assets, a.out, a.type);
+  const db = groupDetails(assets, b.out, b.type);
+  // A group whose inputs are the same for both homes (the date, often) still differs a little: trees
+  // interact. That share goes with the small effects rather than reading as a cause.
+  const same = (/** @type {{group: string}} */ r) => r.group !== "area" && da[r.group] === db[r.group];
+  const shownRows = c.rows.filter((r) => Math.abs(r.diff) >= MIN_SHOWN && !same(r));
+  const rest = c.rows.filter((r) => Math.abs(r.diff) < MIN_SHOWN || same(r)).reduce((s, r) => s + r.diff, 0);
+  const scale = Math.max(Math.log(1.1), ...shownRows.map((r) => Math.abs(r.diff)));
+  const items = shownRows.map((r) => whyRow(GROUP_LABELS[r.group] || r.group,
+    r.group === "area" ? "Niveau des prix autour de chaque adresse" : `${da[r.group]} → ${db[r.group]}`,
+    pct(r.diff), r.diff, scale));
+  if (Math.abs(rest) >= Math.log(1.001)) {
+    items.push(whyRow("Autres facteurs", "Petits écarts et effets croisés des caractéristiques", pct(rest), rest, scale));
+  }
+  items.push(whyRow("Écart au m²", "Bien B par rapport au bien A", pct(Math.log1p(c.priceM2)), null, scale, "total"));
+  $("compare-why").replaceChildren(...items);
+}
+
+/**
+ * Re-estimates a home from a shareable state (the "vs" part of a link).
+ * @param {Assets} assets
+ * @param {string} state
+ * @returns {Promise<Shown | null>}
+ */
+async function fromState(assets, state) {
+  const p = new URLSearchParams(state);
+  const lat = Number(p.get("lat"));
+  const lon = Number(p.get("lon"));
+  const s = Number(p.get("s"));
+  const r = Number(p.get("r"));
+  if (!p.get("a") || !Number.isFinite(lat) || !Number.isFinite(lon) || !(s > 0) || !(r > 0)) return null;
+  const type = p.get("t") === "M" ? "M" : "A";
+  const out = await estimate(assets, { lat, lon, type, surface: s, rooms: r, land: Number(p.get("l") || 0),
+    citycode: p.get("c") || "", parcel: p.get("p") || "",
+    building: { dpe_class: p.get("d") ? Number(p.get("d")) : null, year_built: p.get("y") ? Number(p.get("y")) : null } });
+  return { label: String(p.get("a")), type, out, state };
+}
+
 // ---- shareable link: #a=label&c=citycode&lat=..&lon=..&t=A&s=65&r=3&l=0
 
 (function restore() {
@@ -446,5 +604,13 @@ function showAccuracy(assets) {
   surface.value = p.get("s") || "";
   rooms.value = p.get("r") || "";
   land.value = p.get("l") || "";
+  const vs = p.get("vs");
+  if (vs) {
+    assetsPromise.then((assets) => fromState(assets, vs)).then((a) => {
+      compared = a;
+      if (surface.value && rooms.value) form.requestSubmit();
+    }).catch(() => { if (surface.value && rooms.value) form.requestSubmit(); });
+    return;
+  }
   if (surface.value && rooms.value) form.requestSubmit();
 })();

@@ -38,6 +38,10 @@
           Gratuit et sans compte&nbsp;: le calcul se fait dans votre navigateur.</p>
       </section>
 
+      <p class="banner" id="compare-banner" role="status" hidden>
+        <span><strong>Bien A</strong> <span id="compare-a"></span> — saisissez le bien B à comparer.</span>
+        <button type="button" class="link" id="compare-cancel">Annuler</button>
+      </p>
       <form class="card" id="form" novalidate>
         <div class="combo">
           <label for="address">Adresse</label>
@@ -75,12 +79,23 @@
       </form>
 
       <section id="result" aria-live="polite" data-nosnippet hidden>
+        <div class="card compare" id="compare-card" hidden>
+          <div class="compare-head">
+            <h2>Comparaison</h2>
+            <button type="button" class="link" id="compare-clear">Retirer</button>
+          </div>
+          <div class="compare-grid" id="compare-grid"></div>
+          <p class="compare-gap" id="compare-gap"></p>
+          <h3>Ce qui fait la différence au m²</h3>
+          <ol class="why" id="compare-why"></ol>
+        </div>
         <div class="card">
           <span class="label">Estimation</span>
           <div class="price" id="price"></div>
           <div class="sub"><strong id="ppm2"></strong> le m² · fourchette à 80&nbsp;%</div>
           <div class="range" aria-hidden="true"><span id="marker"></span></div>
           <div class="range-legend"><span id="low"></span><span id="high"></span></div>
+          <button type="button" class="secondary" id="compare-btn">Comparer avec un autre bien</button>
         </div>
         <div class="card">
           <h2>Pourquoi ce prix</h2>
