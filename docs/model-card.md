@@ -3,7 +3,7 @@
 
 # Model card — Valia
 
-*Filled in by each release. Latest: v0.4 — building data from the BDNB (results pending).*
+*Filled in by each release. Latest: v0.4 — building data from the BDNB; the −25 % target is met.*
 
 Last full run: DVF 2021–2025, all covered départements, test year **2025** (800,229 sales never seen in training).
 
@@ -144,6 +144,34 @@ The same check runs on a synthetic market in CI on every push.
   pre-fills the energy class and construction year, which the user can correct.
 - Limits: for an apartment the DPE is that of a representative dwelling of the building, not
   necessarily the one sold; the BDNB is a 2026 snapshot applied to 2021–2025 sales.
+
+### Run 4 — v0.4.0 (3 October 2026)
+
+Same data and split as runs 1–3, plus the BDNB (millésime 2026-02.a). Share of sales with each
+building input: construction year 92.7 %, storeys and dwellings 93.6 %, DPE class 31.4 % (a DPE is
+only used when it was made before the sale). Lift and social-housing share are not in the open
+BDNB tables used (0 %): they stay empty and the trees ignore them.
+
+| Scope | Test sales | MAE(log) full | Gain vs commune median | MdAPE full | MdAPE web | Within 10 % (full) | 80 % range coverage |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **France** | 800,229 | **0.2090** | **−26.7 %** ✅ | **13.94 %** | **14.24 %** | 37.9 % | **81.5 %** ✅ |
+| Paris | 28,884 | 0.1926 | −12.7 % | 12.18 % | 12.29 % | 42.2 % | 81.0 % |
+| Large cities | 317,128 | 0.1855 | −31.9 % | 12.89 % | 13.15 % | 40.4 % | 81.4 % |
+| Mid-size cities | 213,080 | 0.1973 | −26.2 % | 13.07 % | 13.34 % | 40.1 % | 81.5 % |
+| Rural | 241,137 | 0.2522 | −22.4 % | 16.95 % | 17.35 % | 32.0 % | 81.6 % |
+| Apartments | 352,727 | 0.1796 | — | 12.34 % | 12.59 % | 41.9 % | 81.4 % |
+| Houses | 447,502 | 0.2322 | — | 15.45 % | 15.82 % | 34.6 % | 81.6 % |
+
+The web model (the one in the app) reaches −25.6 % (MAE(log) 0.2121 ≤ target 0.2138).
+
+**Verdict: target met.** Both models beat the commune median by more than 25 %, with calibrated
+ranges in every segment. Construction year becomes the second most important input after surface;
+the DPE class follows (5.4 % of gain in the web model). The largest gains are where v0.3 was weakest:
+houses (MdAPE 18.4 % → 15.8 %) and rural communes (20.4 % → 17.4 %), and the ranges get narrower
+(France: 73.7 % → 66.7 % width for the web model).
+
+Run history (France, full model): MdAPE 16.2 % (run 1) → 15.7 % (run 2) → **13.9 %** (run 4);
+gain vs commune median −16.8 % → −18.9 % → **−26.7 %**.
 
 ## Known limits
 

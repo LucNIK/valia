@@ -22,8 +22,8 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | --- | --- | --- | --- |
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
 | **v0.2** | Open-data enrichment, gradient-boosted model anchored on comparable sales, conformal intervals per segment | Beat both references in every segment; 80 % intervals cover 78–82 % of prices (target −25 % vs commune median) | **Done** — −18.9 % error vs commune median, better in every segment, 81.3 % coverage ✅ |
-| **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Done** — 15.8 % median error, 81.3 % coverage; browser = Python on 1,000 real homes |
-| **v0.4** | Building data (BDNB): energy class, construction year, storeys, dwellings, lift, social housing — pre-filled in the app and correctable | Close the gap to −25 % vs commune median | **In progress** — first nationwide run pending |
+| **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Done** — browser = Python on 1,000 real homes |
+| **v0.4** | Building data (BDNB): energy class, construction year, storeys, dwellings, lift, social housing — pre-filled in the app and correctable | Close the gap to −25 % vs commune median | **Done** — −26.7 % error vs commune median (web model −25.6 %), 13.9 % median error, 81.5 % coverage ✅ |
 | v1.0 | SHAP explanations, local trend, comparison, offline app, automatic retraining | Public demo and model card | Planned |
 | v1.x | Accounts, saved homes, price alerts | — | Later |
 
