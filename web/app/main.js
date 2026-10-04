@@ -9,6 +9,7 @@ import { departmentOf } from "./geo.js";
 import { lastMonthOf, renderTrend } from "./chart.js";
 import { compare } from "./compare.js";
 import { estimate } from "./infer.js";
+import { showNeighbourhood } from "./map.js";
 
 /** Départements DVF does not cover (Alsace-Moselle land registry, Mayotte). */
 const NOT_COVERED = new Set(["57", "67", "68", "976"]);
@@ -269,6 +270,12 @@ function render(assets, out, type, where) {
   renderTrendCard(assets, out, type, where);
   renderComparables(out.comparables, where);
   result.hidden = false;
+  showNeighbourhood($("map"), $("map-legend"), assets, { lat: where.lat, lon: where.lon, type }, out.comparables)
+    .then(() => { $("map-card").hidden = false; })
+    .catch((err) => {                                      // no map (offline, blocked tiles): the rest stands
+      console.warn(err);
+      $("map-card").hidden = true;
+    });
   result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
@@ -418,9 +425,9 @@ function renderTrendCard(assets, out, type, where) {
  */
 function renderComparables(comps, at) {
   $("comps-card").hidden = comps.length === 0;
-  $("comps").replaceChildren(...comps.map((c) => {
+  $("comps").replaceChildren(...comps.map((c, i) => {
     const tr = document.createElement("tr");
-    for (const text of [fmt.distance(c.km), fmt.month(c.m), `${Math.round(c.surface)} m²`, fmt.price(c.price),
+    for (const text of [String(i + 1), fmt.distance(c.km), fmt.month(c.m), `${Math.round(c.surface)} m²`, fmt.price(c.price),
                         fmt.perM2(c.price / c.surface)]) {
       const td = document.createElement("td");
       td.textContent = text;

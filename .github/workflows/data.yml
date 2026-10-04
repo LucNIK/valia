@@ -59,6 +59,9 @@ jobs:
 
   site:
     needs: pipeline
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 240
     permissions:
@@ -101,13 +104,8 @@ jobs:
         run: npm test
         env:
           VALIA_ASSETS: ${{ github.workspace }}/web
-      - name: Fonts (IBM Plex, self-hosted)
-        run: |
-          mkdir -p web/assets/fonts /tmp/fonts && cd /tmp/fonts
-          npm pack --silent @fontsource/ibm-plex-sans@5 @fontsource/ibm-plex-mono@5
-          for f in *.tgz; do tar -xzf "$f" && cp package/files/*-latin-{400,500,600}-normal.woff2 \
-            "$GITHUB_WORKSPACE/web/assets/fonts/" 2>/dev/null; rm -rf package; done
-          ls "$GITHUB_WORKSPACE/web/assets/fonts"
+      - name: Fonts and MapLibre (self-hosted)
+        run: scripts/vendor-web.sh
       - name: Assemble the site
         run: |
           rsync -a --exclude test/ --exclude node_modules/ --exclude package.json --exclude tsconfig.json web/ _site/
@@ -118,6 +116,11 @@ jobs:
         with:
           name: valia-web-report
           path: reports/web/
+      - uses: actions/upload-artifact@v4          # reused by the Site workflow to republish the app alone
+        with:
+          name: valia-site-data
+          path: _site/data/
+          retention-days: 90
       - if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
         uses: actions/configure-pages@v5
       - if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'

@@ -47,6 +47,7 @@ import { readForest } from "./trees.js";
  * @property {string} as_of
  * @property {number} now_month
  * @property {number} epoch_year
+ * @property {number} prior_min_sales
  * @property {{lat: number, lon: number, coarse: number}} grid
  * @property {{k: number, lookback_months: number}} knn
  * @property {{dep: Record<string, number | null>, france: number}} static

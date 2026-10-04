@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 John Luke NIKABOU (LucNIK)
+
+# Republishes the app (HTML, CSS, JavaScript) with the data of the last successful Data run, in a
+# couple of minutes: for changes to the interface that need no new data or model.
+name: Site
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["web/**", "scripts/vendor-web.sh", ".github/workflows/site.yml"]
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Last successful Data run
+        id: data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow data.yml --status success --limit 1 \
+               --json databaseId --jq '.[0].databaseId')
+          if [ -z "$id" ]; then echo "no successful Data run yet: run the Data workflow first"; exit 1; fi
+          echo "run=$id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v5
+        with:
+          name: valia-site-data
+          path: data-from-run/
+          run-id: ${{ steps.data.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Fonts and MapLibre (self-hosted)
+        run: scripts/vendor-web.sh
+      - name: Browser tests on the published data
+        working-directory: web
+        env:
+          VALIA_ASSETS: ${{ github.workspace }}/web
+        run: |
+          ln -s ../data-from-run data
+          npm test
+          rm data
+      - name: Assemble the site
+        run: |
+          rsync -a --exclude test/ --exclude node_modules/ --exclude package.json --exclude tsconfig.json web/ _site/
+          rsync -a data-from-run/ _site/data/
+          if [ -n "${{ vars.VALIA_DOMAIN }}" ]; then echo "${{ vars.VALIA_DOMAIN }}" > _site/CNAME; fi
+          du -sh _site; find _site -type f | wc -l
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -22,6 +22,6 @@ DVF is published under the Licence Ouverte 2.0 with two conditions that this pro
 
 The application sets no cookie and collects no personal data. Estimates are computed in the browser;
 only the typed address and its position are sent, to the national address service (IGN Géoplateforme),
-to find the address and its cadastral parcel. The theme choice
+to find the address and its cadastral parcel, along with the map's background tiles (Plan IGN). The theme choice
 is remembered in the browser's local storage. A strict Content Security Policy only allows the site
-itself and the address service.
+itself and the IGN Géoplateforme (addresses and map tiles).

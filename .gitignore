@@ -12,3 +12,4 @@ web/node_modules/
 web/test/fixtures/
 web/assets/fonts/
 _site/
+web/vendor/

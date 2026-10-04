@@ -7,7 +7,7 @@
   <title>Valia — estimation immobilière</title>
   <meta name="description" content="Estimez le prix d'un appartement ou d'une maison en France à partir des ventes réelles (DVF). Gratuit, sans compte, calculé dans votre navigateur.">
   <meta name="author" content="John Luke NIKABOU (LucNIK)">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://data.geopf.fr; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://data.geopf.fr; img-src 'self' data: blob:; worker-src blob:; child-src blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0d0c0f" media="(prefers-color-scheme: dark)">
@@ -102,6 +102,13 @@
           <ol class="why" id="why" aria-label="Décomposition du prix au m²"></ol>
           <p class="note" id="explain"></p>
         </div>
+        <div class="card" id="map-card">
+          <h2>Carte du quartier</h2>
+          <div class="map" id="map" role="region" aria-label="Carte des prix autour de l'adresse"></div>
+          <div class="legend" id="map-legend"></div>
+          <p class="note" id="map-note">Chaque carré d'environ 500 m est coloré selon le prix médian au m² de ses ventes des
+            douze derniers mois (au moins trois ventes). Les numéros sont les ventes comparables listées plus bas.</p>
+        </div>
         <div class="card" id="trend-card">
           <h2>Évolution des prix</h2>
           <div class="trend-stats">
@@ -116,7 +123,7 @@
           <div class="comps">
             <svg id="radar" viewBox="-60 -60 120 120" role="img" aria-label="Position des ventes comparables"></svg>
             <table>
-              <thead><tr><th>Distance</th><th>Date</th><th>Surface</th><th>Prix</th><th>€/m²</th></tr></thead>
+              <thead><tr><th>N°</th><th>Distance</th><th>Date</th><th>Surface</th><th>Prix</th><th>€/m²</th></tr></thead>
               <tbody id="comps"></tbody>
             </table>
           </div>

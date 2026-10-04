@@ -24,8 +24,8 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | **v0.2** | Open-data enrichment, gradient-boosted model anchored on comparable sales, conformal intervals per segment | Beat both references in every segment; 80 % intervals cover 78–82 % of prices (target −25 % vs commune median) | **Done** — −18.9 % error vs commune median, better in every segment, 81.3 % coverage ✅ |
 | **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Done** — browser = Python on 1,000 real homes |
 | **v0.4** | Building data (BDNB): energy class, construction year, storeys, dwellings, lift, social housing — pre-filled in the app and correctable | Close the gap to −25 % vs commune median | **Done** — −26.7 % error vs commune median (web model −25.6 %), 13.9 % median error, 81.5 % coverage ✅ |
-| v1.0 | Why this price (TreeSHAP, in the browser) · local trend · comparison · installable offline app | Public demo and model card | **In progress** — explanations, local trend and comparison done |
-| v1.x | Accounts, saved homes, price alerts | — | Later |
+| v1.0 | Why this price (TreeSHAP, in the browser) · local trend · comparison · neighbourhood map · immersive 3D map · installable offline app | Public demo and model card | **In progress** — explanations, local trend, comparison and neighbourhood map done |
+| v1.x | Accounts, saved homes, history, price alerts and notifications | — | Later |
 
 ## Why it is different
 
@@ -97,6 +97,8 @@ cd web && python -m http.server 8000   # http://localhost:8000
 ```
 
 The Data workflow rebuilds everything after each DVF release and publishes the site to GitHub Pages.
+The Site workflow republishes the app alone in a couple of minutes, with the data of the last Data run.
+Fonts and MapLibre GL JS are served by the site itself (`scripts/vendor-web.sh`, pinned versions).
 
 ## Data and licence
 
