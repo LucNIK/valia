@@ -306,6 +306,21 @@ class ExportTest(unittest.TestCase):
                                places=9)
         self.assertEqual(set(e["groups"]), set(self.assets.meta["explain_groups"]))
 
+    def test_price_trend(self) -> None:
+        paris = estimate(self.assets, Query(48.857, 2.352, "A", 62, 3, citycode="75056"))["trend"]
+        self.assertEqual((paris["scope"], paris["kind"]), ("commune", "A"))
+        self.assertEqual(len(paris["values"]), len(self.assets.meta["trend"]["ends"]))
+        self.assertAlmostEqual(paris["year_change"], 0.04, delta=0.03)      # the synthetic market: +4 % a year
+        flats_in_gueret = estimate(self.assets, Query(46.17, 1.87, "A", 40, 2, citycode="23096"))["trend"]
+        self.assertEqual(flats_in_gueret["kind"], "all")                    # no flat sold there: all homes
+        nowhere = estimate(self.assets, Query(43.3, 5.4, "A", 50, 2, citycode="13201"))["trend"]
+        self.assertEqual(nowhere["scope"], "france")
+        # every published point aggregates at least TREND_MIN_SALES sales
+        from valia.export import TREND_MIN_SALES, trends
+        ends = [pd.Timestamp(e) for e in self.assets.meta["trend"]["ends"]]
+        small = self.sales[self.sales["code_commune"].eq("23096")].head(TREND_MIN_SALES - 1)
+        self.assertEqual(trends(small, "code_commune", ends), {})
+
     def test_user_corrections_replace_the_published_building(self) -> None:
         parcel = self.parcels["parcel"].iloc[0]
         q = Query(48.857, 2.352, "A", 62, 3, citycode="75056", parcel=parcel)

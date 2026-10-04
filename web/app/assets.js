@@ -24,6 +24,8 @@ import { readForest } from "./trees.js";
  * @property {number | null} [density_log]
  * @property {number | null} [density_grid]
  * @property {number | null} [equipment_level]
+ * @property {Record<string, (number | null)[]>} [trend]
+ * @typedef {{deps: Record<string, Record<string, (number | null)[]>>, france: Record<string, (number | null)[]>}} Trends
  * @typedef {object} TileSales
  * @property {number[]} m   month index (year * 12 + month)
  * @property {string[]} t   "A" | "M"
@@ -52,6 +54,7 @@ import { readForest } from "./trees.js";
  * @property {string} source
  * @property {string[]} parcel_fields
  * @property {Record<string, string[]>} explain_groups
+ * @property {{ends: string[], window_months: number, min_sales: number}} trend
  * @property {string | null} [buildings_source]
  * @typedef {{global_half_width_log: number, by_group: Record<string, number>}} Intervals
  */
@@ -67,8 +70,9 @@ export class Assets {
    * @param {import("./trees.js").Forest} forest
    * @param {string[]} features model inputs, in order
    * @param {string[]} parcelCodes communes with published building data
+   * @param {Trends} trends price series per département and for France
    */
-  constructor(loader, meta, intervals, stations, index, forest, features, parcelCodes) {
+  constructor(loader, meta, intervals, stations, index, forest, features, parcelCodes, trends) {
     this.loader = loader;
     this.meta = meta;
     this.intervals = intervals;
@@ -77,6 +81,7 @@ export class Assets {
     this.forest = forest;
     this.features = features;
     this.parcelCodes = new Set(parcelCodes);
+    this.trends = trends;
     /** @type {Map<string, Promise<Record<string, (number | null)[]>>>} */
     this.parcels = new Map();
     /** @type {Map<string, Promise<Tile | null>>} */
@@ -87,15 +92,16 @@ export class Assets {
 
   /** @param {Loader} loader */
   static async open(loader) {
-    const [meta, intervals, stations, index, model, header, parcelCodes] = await Promise.all([
+    const [meta, intervals, stations, index, model, header, parcelCodes, trends] = await Promise.all([
       loader.json("data/meta.json"), loader.json("data/intervals.json"), loader.json("data/stations.json"),
       loader.json("data/tiles/index.json"), loader.binary("data/model.bin"), loader.json("data/model.json"),
-      loader.json("data/parcels/index.json"),
+      loader.json("data/parcels/index.json"), loader.json("data/trends.json"),
     ]);
     if (!meta || meta.format !== "valia-web/2") throw new Error("unsupported asset format");
     const forest = readForest(model);
     if (header.features.length !== forest.nFeatures) throw new Error("model header does not match the trees");
-    return new Assets(loader, meta, intervals, stations || [], index || {}, forest, header.features, parcelCodes || []);
+    return new Assets(loader, meta, intervals, stations || [], index || {}, forest, header.features, parcelCodes || [],
+                      trends || { deps: {}, france: {} });
   }
 
   /**

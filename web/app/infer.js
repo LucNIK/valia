@@ -227,6 +227,41 @@ export async function features(assets, q) {
            anchorSource: source, building };
 }
 
+export const MIN_TREND_POINTS = 8;
+
+/**
+ * Relative change from `back` quarters before the last point to the last point.
+ * @param {(number | null)[]} values @param {number} back
+ */
+function change(values, back) {
+  const last = values[values.length - 1];
+  const before = values[values.length - 1 - back];
+  if (values.length <= back || last === null || before === null || before === undefined) return null;
+  return last / before - 1;
+}
+
+/**
+ * The most local price series with enough points (see trend() in inference.py).
+ * @param {Assets} assets @param {string} commune @param {"A" | "M"} kind
+ */
+export async function trend(assets, commune, kind) {
+  const entry = commune ? await assets.commune(commune) : null;
+  const dep = commune ? assets.trends.deps[departmentOf(commune)] || {} : {};
+  const own = entry?.trend || {};
+  /** @type {[string, string, (number | null)[] | undefined][]} */
+  const candidates = [["commune", kind, own[kind]], ["commune", "all", own.all],
+                      ["departement", kind, dep[kind]], ["france", kind, assets.trends.france[kind]]];
+  for (const [scope, k, values] of candidates) {
+    if (values && values.filter((v) => v !== null).length >= MIN_TREND_POINTS) {
+      const first = /** @type {number} */ (values.find((v) => v !== null));
+      const last = values[values.length - 1];
+      return { scope, kind: k, values, yearChange: change(values, 4),
+               totalChange: last !== null ? last / first - 1 : null };
+    }
+  }
+  return null;
+}
+
 /**
  * Price estimate with its 80 % range.
  * @param {Assets} assets
@@ -250,6 +285,7 @@ export async function estimate(assets, q) {
     priceM2: Math.exp(logPpm2),
     halfWidth: half,
     explanation: explain(assets, row),
+    trend: await trend(assets, ctx.commune, q.type),
   };
 }
 

@@ -175,6 +175,24 @@ td { white-space: nowrap; }
   .why li { grid-template-columns: minmax(0, 1fr) 70px 58px; gap: 10px; }
   .why .what span { white-space: normal; }
 }
+.trend-stats { display: flex; gap: 32px; margin: 0 0 8px; }
+.trend-stats strong { display: block; font: 500 22px var(--mono); letter-spacing: -0.02em; }
+.trend-stats strong.up { color: var(--accent); }
+.trend { position: relative; margin: 6px 0 10px; }
+.trend-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.trend-svg .grid { stroke: var(--line); stroke-width: 1; }
+.trend-svg .axis { fill: var(--muted); font: 11px var(--mono); }
+.trend-svg .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.trend-svg .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.trend-svg .last { fill: var(--text); font: 500 12px var(--mono); }
+.trend-svg .cross { stroke: var(--muted); stroke-width: 1; }
+.trend-svg rect:focus { outline: none; }
+.trend-svg rect:focus-visible { outline: 2px solid var(--accent); }
+.trend-tip { position: absolute; transform: translate(-50%, calc(-100% - 12px)); pointer-events: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); white-space: nowrap; font-size: 12px; }
+.trend-tip strong { display: block; font: 500 13px var(--mono); }
+.trend-tip span { color: var(--muted); }
 h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.01em; }
 
 .prose { padding: 40px 0 0; }

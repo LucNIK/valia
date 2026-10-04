@@ -64,6 +64,7 @@ class Assets:
     intervals: dict = field(init=False)
     stations: list[float] = field(init=False)
     tile_index: dict[str, set[str]] = field(init=False)
+    trends: dict = field(init=False)
     parcel_codes: set[str] = field(init=False)
     _tiles: dict = field(default_factory=dict, init=False)
     _communes: dict = field(default_factory=dict, init=False)
@@ -75,6 +76,8 @@ class Assets:
         self.forest = read_binary(data / "model.bin")
         self.intervals = json.loads((data / "intervals.json").read_text())
         self.stations = json.loads((data / "stations.json").read_text())
+        trends_file = data / "trends.json"
+        self.trends = json.loads(trends_file.read_text()) if trends_file.exists() else {"deps": {}, "france": {}}
         index = json.loads((data / "tiles" / "index.json").read_text())
         self.tile_index = {r: {str(c) for c in cols} for r, cols in index.items()}
         parcel_index = data / "parcels" / "index.json"
@@ -254,6 +257,32 @@ def explain(assets: Assets, row: np.ndarray) -> dict:
     return {"base": base, "contributions": contributions, "groups": groups}
 
 
+MIN_TREND_POINTS = 8
+
+
+def _change(values: list, back: int) -> float | None:
+    """Relative change from `back` quarters before the last point to the last point."""
+    if len(values) <= back or values[-1] is None or values[-1 - back] is None:
+        return None
+    return values[-1] / values[-1 - back] - 1
+
+
+def trend(assets: Assets, commune: str, kind: str) -> dict | None:
+    """The most local price series with enough points: the commune for this type of home, the commune
+    for all homes, then the département, then France."""
+    entry = assets.commune(commune) if commune else None
+    dep = assets.trends["deps"].get(department_of(commune), {}) if commune else {}
+    candidates = [("commune", kind, (entry or {}).get("trend", {}).get(kind)),
+                  ("commune", "all", (entry or {}).get("trend", {}).get("all")),
+                  ("departement", kind, dep.get(kind)), ("france", kind, assets.trends["france"].get(kind))]
+    for scope, k, values in candidates:
+        if values and sum(v is not None for v in values) >= MIN_TREND_POINTS:
+            first = next(v for v in values if v is not None)
+            return {"scope": scope, "kind": k, "values": values, "year_change": _change(values, 4),
+                    "total_change": values[-1] / first - 1 if values[-1] is not None else None}
+    return None
+
+
 def estimate(assets: Assets, q: Query, with_explanation: bool = False) -> dict:
     f, ctx = features(assets, q)
     row = np.array([f[name] for name in assets.forest.features], dtype=np.float64)
@@ -268,6 +297,7 @@ def estimate(assets: Assets, q: Query, with_explanation: bool = False) -> dict:
         "high": math.exp(log_ppm2 + half) * q.surface,
         "price_m2": math.exp(log_ppm2),
         "features": f,
+        "trend": trend(assets, ctx["commune"], q.type),
         **ctx,
         **({"explanation": explain(assets, row)} if with_explanation else {}),
     }
@@ -327,6 +357,7 @@ def fixtures(assets: Assets, queries: list[Query], explain_every: int = 10) -> l
             "commune": r["commune"], "segment": r["segment"], "anchor_source": r["anchor_source"],
             "building": {k: _json_number(v) if isinstance(v, float) else v for k, v in r["building"].items()},
             "comparables": [[c["lat"], c["lon"], c["m"], c["price"]] for c in r["comparables"]],
+            "trend": r["trend"],
             **({"explanation": r["explanation"]} if "explanation" in r else {}),
         })
     return out

@@ -61,6 +61,17 @@ test("browser estimates match the Python reference", { skip: !existsSync(parityF
       if (want === null) assert.ok(got.building[name] === null || Number.isNaN(got.building[name]), `${where} ${name}`);
       else close(/** @type {number} */ (want), /** @type {number} */ (got.building[name]), `${where} building ${name}`);
     }
+    if (row.trend === null) assert.equal(got.trend, null, `${where} trend`);
+    else {
+      const t = /** @type {NonNullable<typeof got.trend>} */ (got.trend);
+      assert.equal(t.scope, row.trend.scope, `${where} trend scope`);
+      assert.equal(t.kind, row.trend.kind, `${where} trend kind`);
+      assert.deepEqual(t.values, row.trend.values, `${where} trend values`);
+      for (const [a, b] of [[row.trend.year_change, t.yearChange], [row.trend.total_change, t.totalChange]]) {
+        if (a === null) assert.equal(b, null, `${where} trend change`);
+        else close(a, /** @type {number} */ (b), `${where} trend change`);
+      }
+    }
     if (row.explanation) {
       close(row.explanation.base, got.explanation.base, `${where} base`);
       for (const [name, want] of Object.entries(row.explanation.contributions)) {

@@ -9,6 +9,7 @@ so estimation runs in the browser with no server:
   data/meta.json                 versions, data date, published accuracy, fallbacks
   data/model.bin + model.json    the web model (see treemodel.py)
   data/intervals.json            conformal half-widths per segment and property type
+  data/trends.json               12-month median price per m², quarter by quarter, per département and France
   data/stations.json             railway stations, for the distance feature
   data/communes/<dep>.json       per commune: segment, static median, profile, recent priors
   data/parcels/<code>.json       per parcel holding dwellings: building data from the BDNB (ODbL)
@@ -63,6 +64,33 @@ def priors_at(sales: pd.DataFrame, key: str, as_of: pd.Timestamp) -> pd.DataFram
     return out
 
 
+TREND_WINDOW_MONTHS = 12
+TREND_MIN_SALES = 10
+
+
+def trend_ends(sales: pd.DataFrame) -> list[pd.Timestamp]:
+    """Ends (exclusive) of the 12-month windows, one per quarter, from the first full window to the
+    last full quarter of the data."""
+    first = sales["date"].min().to_period("Q").start_time + pd.DateOffset(months=TREND_WINDOW_MONTHS)
+    last = (sales["date"].max() + pd.Timedelta(days=1)).to_period("Q").start_time
+    return list(pd.date_range(first, last, freq="QS"))
+
+
+def trends(sales: pd.DataFrame, key: str | None, ends: list[pd.Timestamp]) -> dict[str, dict[str, list]]:
+    """Median price per m² over the 12 months before each end, per key and property type (and all
+    types), with at least TREND_MIN_SALES sales; None otherwise. key=None: one series for all sales."""
+    frame = sales.assign(_key="FR") if key is None else sales.assign(_key=sales[key].astype(str))
+    out: dict[str, dict[str, list]] = {}
+    for n, end in enumerate(ends):
+        window = frame[(frame["date"] >= end - pd.DateOffset(months=TREND_WINDOW_MONTHS)) & (frame["date"] < end)]
+        for kind in (*TYPES, "all"):
+            part = window if kind == "all" else window[window["type"] == kind]
+            g = part.groupby("_key")["price_m2"].agg(["median", "count"])
+            for k, med, _count in g[g["count"] >= TREND_MIN_SALES].itertuples():
+                out.setdefault(str(k), {}).setdefault(kind, [None] * len(ends))[n] = round(float(med))
+    return out
+
+
 def _prior_dict(table: pd.DataFrame) -> dict[str, dict[str, list]]:
     """{key: {"A": [median, n], "M": [...], "all": [...]}}"""
     out: dict[str, dict[str, list]] = {}
@@ -97,6 +125,11 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
 
     # ---- communes: segment, static median, profile, recent priors
     commune_priors = _prior_dict(priors_at(frame, "code_commune", as_of))
+    ends = trend_ends(frame)
+    commune_trends = trends(frame, "code_commune", ends)
+    (data / "trends.json").write_text(json.dumps(
+        {"deps": trends(frame, "dep", ends), "france": trends(frame, None, ends).get("FR", {})},
+        separators=(",", ":")))
     profile = {}
     if communes is not None and len(communes):
         for row in communes.itertuples(index=False):
@@ -115,6 +148,8 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
             entry["density_log"] = _num(np.log1p(getattr(p, "density", np.nan)))
             entry["density_grid"] = _num(getattr(p, "density_grid", np.nan))
             entry["equipment_level"] = _num(getattr(p, "equipment_level", np.nan))
+        if code in commune_trends:
+            entry["trend"] = commune_trends[code]
         by_dep.setdefault(str(dep), {})[code] = entry
     for dep, entries in by_dep.items():
         (data / "communes" / f"{dep}.json").write_text(json.dumps(entries, separators=(",", ":")))
@@ -186,6 +221,8 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
         },
         "parcel_fields": PARCEL_FIELDS,
         "explain_groups": EXPLAIN_GROUPS,
+        "trend": {"ends": [e.date().isoformat() for e in ends], "window_months": TREND_WINDOW_MONTHS,
+                  "min_sales": TREND_MIN_SALES},
         "source": "Demandes de valeurs foncières géolocalisées (Etalab) — Licence Ouverte 2.0",
         "buildings_source": BDNB_SOURCE if parcels is not None else None,
     }

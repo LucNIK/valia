@@ -6,6 +6,7 @@ import { Assets, httpLoader, parcelOf } from "./assets.js";
 import * as fmt from "./format.js";
 import { parcelAt, searchAddress } from "./geocode.js";
 import { departmentOf } from "./geo.js";
+import { lastMonthOf, renderTrend } from "./chart.js";
 import { estimate } from "./infer.js";
 
 /** Départements DVF does not cover (Alsace-Moselle land registry, Mayotte). */
@@ -253,6 +254,7 @@ function render(assets, out, type, where) {
                   `réel a été de ${String(accuracy).replace(".", ",")} % lors du test sur ${assets.meta.accuracy.test_year}.` : "");
 
   renderWhy(assets, out, type);
+  renderTrendCard(assets, out, type, where);
   renderComparables(out.comparables, where);
   result.hidden = false;
   result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -339,6 +341,40 @@ function renderWhy(assets, out, type) {
   if (Math.abs(rest) >= Math.log(1.001)) items.push(row("Autres facteurs", "Effets de moins de 0,5 % chacun", pct(rest), rest));
   items.push(row("Votre estimation", "Prix au m²", fmt.perM2(out.priceM2), null, "total"));
   $("why").replaceChildren(...items);
+}
+
+/**
+ * @param {Assets} assets
+ * @param {Awaited<ReturnType<typeof estimate>>} out
+ * @param {"A" | "M"} type
+ * @param {{label: string}} where
+ */
+function renderTrendCard(assets, out, type, where) {
+  const card = $("trend-card");
+  const t = out.trend;
+  card.hidden = !t;
+  if (!t) return;
+  /** @param {number | null} c @param {string} id */
+  const stat = (c, id) => {
+    const node = $(id);
+    node.className = c !== null && c > 0 ? "up" : "";
+    node.textContent = c === null ? "—"
+      : `${c > 0 ? "+" : c < 0 ? "−" : ""}${String(Math.abs(Math.round(c * 1000) / 10)).replace(".", ",")} %`;
+  };
+  stat(t.yearChange, "trend-year");
+  stat(t.totalChange, "trend-total");
+  const ends = assets.meta.trend.ends;
+  const firstIndex = t.values.findIndex((v) => v !== null);
+  $("trend-since-label").textContent = `Depuis ${fmt.month(lastMonthOf(ends[firstIndex]))}`;
+  const kinds = t.kind === "M" ? "maisons" : t.kind === "A" ? "appartements" : "logements";
+  const city = (where.label.match(/\d{5}\s+(.+)$/) || [])[1];
+  const scope = t.scope === "commune" ? (city ? `à ${city}` : "dans la commune")
+    : t.scope === "departement" ? "dans le département" : "en France";
+  const label = `Prix médian au m² des ${kinds} vendus ${scope}, sur 12 mois glissants`;
+  renderTrend($("trend"), t.values, ends, label);
+  $("trend-note").textContent = `${label}, trimestre par trimestre (DVF).` +
+    (t.scope !== "commune" ? " Trop peu de ventes dans la commune pour une courbe locale fiable." : "") +
+    (t.kind === "all" ? " Pas assez de ventes de ce type de bien : tous les logements sont comptés." : "");
 }
 
 /**
