@@ -45,6 +45,7 @@ test("browser estimates match the Python reference", { skip: !existsSync(parityF
   const assets = await Assets.open(fsLoader(assetsRoot));
   assert.ok(rows.length > 0);
   let checked = 0;
+  let explained = 0;
   for (const row of rows) {
     const q = row.query;
     const got = await estimate(assets, { ...q, citycode: q.citycode });
@@ -60,8 +61,19 @@ test("browser estimates match the Python reference", { skip: !existsSync(parityF
       if (want === null) assert.ok(got.building[name] === null || Number.isNaN(got.building[name]), `${where} ${name}`);
       else close(/** @type {number} */ (want), /** @type {number} */ (got.building[name]), `${where} building ${name}`);
     }
+    if (row.explanation) {
+      close(row.explanation.base, got.explanation.base, `${where} base`);
+      for (const [name, want] of Object.entries(row.explanation.contributions)) {
+        close(/** @type {number} */ (want), got.explanation.contributions[name], `${where} contribution ${name}`);
+      }
+      for (const [name, want] of Object.entries(row.explanation.groups)) {
+        close(/** @type {number} */ (want), got.explanation.groups[name], `${where} group ${name}`);
+      }
+      explained++;
+    }
     assert.deepEqual(got.comparables.map((c) => [c.lat, c.lon, c.m, c.price]), row.comparables, `${where} comparables`);
     checked++;
   }
   assert.equal(checked, rows.length);
+  assert.ok(explained > 0, "no reference explanation in the fixtures");
 });

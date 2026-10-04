@@ -9,7 +9,7 @@
 
 import { parcelOf } from "./assets.js";
 import { cellOf, departmentOf, EARTH_RADIUS_KM, haversineKm, median } from "./geo.js";
-import { predictRow } from "./trees.js";
+import { explainRow, predictRow } from "./trees.js";
 
 export const MAX_RING = 4;
 export const TYPE_LABEL = /** @type {const} */ ({ A: "Appartements", M: "Maisons" });
@@ -235,7 +235,8 @@ export async function features(assets, q) {
 export async function estimate(assets, q) {
   const ctx = await features(assets, q);
   const f = ctx.features;
-  const gap = predictRow(assets.forest, assets.features.map((name) => f[name]));
+  const row = assets.features.map((name) => f[name]);
+  const gap = predictRow(assets.forest, row);
   const logPpm2 = f.anchor + gap;
   const group = `${ctx.segment} · ${TYPE_LABEL[q.type]}`;
   const byGroup = assets.intervals.by_group;
@@ -248,5 +249,28 @@ export async function estimate(assets, q) {
     high: Math.exp(logPpm2 + half) * q.surface,
     priceM2: Math.exp(logPpm2),
     halfWidth: half,
+    explanation: explain(assets, row),
   };
+}
+
+/**
+ * Why this price (see explain() in inference.py): TreeSHAP contributions of each input to the
+ * model's gap, in log price per m², and their sums per group of meta.explain_groups.
+ * anchor + base + sum(groups) = log price per m².
+ * @param {Assets} assets
+ * @param {number[]} row model inputs, in assets.features order
+ */
+export function explain(assets, row) {
+  const { base, contributions: phi } = explainRow(assets.forest, row);
+  /** @type {Record<string, number>} */
+  const contributions = {};
+  assets.features.forEach((name, i) => { contributions[name] = phi[i]; });
+  /** @type {Record<string, number>} */
+  const groups = {};
+  for (const [name, members] of Object.entries(assets.meta.explain_groups)) {
+    let sum = 0;
+    for (const m of members) if (Object.hasOwn(contributions, m)) sum += contributions[m];
+    groups[name] = sum;
+  }
+  return { base, contributions, groups };
 }

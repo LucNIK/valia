@@ -92,12 +92,15 @@ def random_forest(features: list[str], n_trees: int = 30, depth: int = 4, seed: 
     rng = np.random.default_rng(seed)
     node_start, leaf_start, tree_nodes = [], [], []
     feature, decision, threshold, left, right, value = [], [], [], [], [], []
+    node_count: list[float] = []
+    leaf_count: list[float] = []
     for t in range(n_trees):
         node_start.append(len(feature))
         leaf_start.append(len(value))
         if t == 0:                                    # a single-leaf tree, as LightGBM can emit
             tree_nodes.append(0)
             value.append(0.01)
+            leaf_count.append(100.0)
             continue
         n_internal = 2 ** depth - 1
         tree_nodes.append(n_internal)
@@ -112,12 +115,20 @@ def random_forest(features: list[str], n_trees: int = 30, depth: int = 4, seed: 
             left.append(kids[0] if kids[0] < n_internal else ~(kids[0] - n_internal))
             right.append(kids[1] if kids[1] < n_internal else ~(kids[1] - n_internal))
         value.extend(rng.normal(0, 0.05, n_internal + 1).tolist())
+        leaves = rng.integers(1, 500, n_internal + 1).astype(float)
+        leaf_count.extend(leaves.tolist())
+        counts = [0.0] * n_internal                  # each node: the rows of its subtree
+        for i in range(n_internal - 1, -1, -1):
+            kids = [2 * i + 1, 2 * i + 2]
+            counts[i] = sum(counts[k] if k < n_internal else leaves[k - n_internal] for k in kids)
+        node_count.extend(counts)
     return Forest(features=list(features),
                   node_start=np.array(node_start, dtype=np.int32), leaf_start=np.array(leaf_start, dtype=np.int32),
                   tree_nodes=np.array(tree_nodes, dtype=np.int32), feature=np.array(feature, dtype=np.uint8),
                   decision=np.array(decision, dtype=np.uint8), threshold=np.array(threshold, dtype=np.float64),
                   left=np.array(left, dtype=np.int32), right=np.array(right, dtype=np.int32),
-                  value=np.array(value, dtype=np.float64))
+                  value=np.array(value, dtype=np.float64), node_count=np.array(node_count, dtype=np.float64),
+                  leaf_count=np.array(leaf_count, dtype=np.float64))
 
 
 def bdnb_parcels(sales: pd.DataFrame, seed: int = 5) -> pd.DataFrame:

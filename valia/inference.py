@@ -17,8 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .bdnb import building_features
-from .model import FEATURES
-from .treemodel import Forest, predict_row, read_binary
+from .treemodel import Forest, explain_row, predict_row, read_binary
 
 EARTH_RADIUS_KM = 6_371.0
 MAX_RING = 4                      # up to 9x9 coarse tiles, ~20 km
@@ -245,9 +244,19 @@ def features(assets: Assets, q: Query) -> tuple[dict, dict]:
     return f, context
 
 
-def estimate(assets: Assets, q: Query) -> dict:
+def explain(assets: Assets, row: np.ndarray) -> dict:
+    """Why this price: base + per-feature contributions (log price per m², summing to the model's gap),
+    and their sums per group of meta["explain_groups"]."""
+    base, phi = explain_row(assets.forest, row)
+    contributions = dict(zip(assets.forest.features, phi.tolist(), strict=True))
+    groups = {name: sum(contributions[f] for f in members if f in contributions)
+              for name, members in assets.meta["explain_groups"].items()}
+    return {"base": base, "contributions": contributions, "groups": groups}
+
+
+def estimate(assets: Assets, q: Query, with_explanation: bool = False) -> dict:
     f, ctx = features(assets, q)
-    row = np.array([f[name] for name in FEATURES], dtype=np.float64)
+    row = np.array([f[name] for name in assets.forest.features], dtype=np.float64)
     gap = predict_row(assets.forest, row)
     log_ppm2 = f["anchor"] + gap
     group = f"{ctx['segment']} · {TYPE_LABEL[q.type]}"
@@ -260,6 +269,7 @@ def estimate(assets: Assets, q: Query) -> dict:
         "price_m2": math.exp(log_ppm2),
         "features": f,
         **ctx,
+        **({"explanation": explain(assets, row)} if with_explanation else {}),
     }
 
 
@@ -304,11 +314,12 @@ def sample_queries(assets: Assets, n: int, seed: int = 0) -> list[Query]:
     return queries
 
 
-def fixtures(assets: Assets, queries: list[Query]) -> list[dict]:
-    """Expected outputs, in the JSON shape the JavaScript tests read."""
+def fixtures(assets: Assets, queries: list[Query], explain_every: int = 10) -> list[dict]:
+    """Expected outputs, in the JSON shape the JavaScript tests read. Explanations are slow in
+    Python (about a second for the web model), so only one query in `explain_every` gets one."""
     out = []
-    for q in queries:
-        r = estimate(assets, q)
+    for n, q in enumerate(queries):
+        r = estimate(assets, q, with_explanation=n % explain_every == 0)
         out.append({
             "query": q.__dict__,
             "features": {k: _json_number(v) for k, v in r["features"].items()},
@@ -316,5 +327,6 @@ def fixtures(assets: Assets, queries: list[Query]) -> list[dict]:
             "commune": r["commune"], "segment": r["segment"], "anchor_source": r["anchor_source"],
             "building": {k: _json_number(v) if isinstance(v, float) else v for k, v in r["building"].items()},
             "comparables": [[c["lat"], c["lon"], c["m"], c["price"]] for c in r["comparables"]],
+            **({"explanation": r["explanation"]} if "explanation" in r else {}),
         })
     return out

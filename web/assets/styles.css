@@ -156,6 +156,25 @@ td { padding: 8px 0; border-top: 1px solid var(--line); font-family: var(--mono)
 th:not(:first-child), td:not(:first-child) { text-align: right; padding-left: 10px; }
 td { white-space: nowrap; }
 @media (max-width: 440px) { th:nth-child(5), td:nth-child(5) { display: none; } td { font-size: 12px; } }
+.why { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 2px; }
+.why li { display: grid; grid-template-columns: minmax(0, 1fr) 120px 64px; gap: 14px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--line); }
+.why li:first-child { border-top: 0; }
+.why .what { min-width: 0; }
+.why .what strong { display: block; font-weight: 500; font-size: 14px; }
+.why .what span { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.why .bar { position: relative; height: 6px; background: var(--line); border-radius: 6px; }
+.why .bar::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--muted); opacity: 0.5; }
+.why .bar i { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--accent); }
+.why .bar i.down { background: var(--muted); }
+.why .val { font: 500 13px var(--mono); text-align: right; }
+.why li.total { border-top: 1px solid var(--text); }
+.why li.ref .val, .why li.total .val { font-size: 13px; }
+.why li.ref .bar, .why li.total .bar { visibility: hidden; }
+@media (max-width: 480px) {
+  .why li { grid-template-columns: minmax(0, 1fr) 70px 58px; gap: 10px; }
+  .why .what span { white-space: normal; }
+}
 h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.01em; }
 
 .prose { padding: 40px 0 0; }

@@ -33,6 +33,7 @@ from .bdnb import SOURCE_NAME as BDNB_SOURCE
 from .config import CELL_DEG_LAT, CELL_DEG_LON, PRIOR_MIN_SALES
 from .enrich import parent_commune
 from .features import COARSE_FACTOR, KNN_K, KNN_LOOKBACK_MONTHS, cell_id
+from .model import EXPLAIN_GROUPS
 
 FORMAT = "valia-web/2"
 PARCEL_FIELDS = ["dpe_class", "year_built", "levels", "dwellings", "elevator", "social_share"]
@@ -184,6 +185,7 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
                            for k, v in report.get("model", {}).get("by_segment", {}).items()},
         },
         "parcel_fields": PARCEL_FIELDS,
+        "explain_groups": EXPLAIN_GROUPS,
         "source": "Demandes de valeurs foncières géolocalisées (Etalab) — Licence Ouverte 2.0",
         "buildings_source": BDNB_SOURCE if parcels is not None else None,
     }

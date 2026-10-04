@@ -27,7 +27,7 @@ from valia.export import export_assets
 from valia.features import add_features
 from valia.inference import Assets, Query, estimate, features, haversine_km, median, neighbours
 from valia.model import FEATURES, Anchor, design
-from valia.treemodel import parse_lightgbm, predict, predict_row, read_binary, write_binary
+from valia.treemodel import explain_row, parse_lightgbm, predict, predict_row, read_binary, write_binary
 
 STATIONS = np.array([[48.8443, 2.3744], [45.7605, 4.8596], [46.1720, 1.8690]])
 COMMUNES = pd.DataFrame({"code": ["75056", "69123", "23096"], "population": [2.1e6, 5.2e5, 1.3e4],
@@ -83,7 +83,84 @@ end of trees
 """
 
 
+def shapley_by_enumeration(forest, row: np.ndarray) -> np.ndarray:
+    """Exact Shapley values of the path-dependent value function, by brute force over feature subsets."""
+    from itertools import combinations
+
+    from valia.treemodel import _goes_left
+
+    x = row.astype(np.float32).astype(np.float64)
+
+    def value(subset: set[int]) -> float:
+        total = 0.0
+        for t in range(forest.n_trees):
+            base, leaf = int(forest.node_start[t]), int(forest.leaf_start[t])
+
+            def go(node: int, base: int = base, leaf: int = leaf) -> float:
+                if node < 0:
+                    return float(forest.value[leaf + ~node])
+                i = base + node
+                f, left, right = int(forest.feature[i]), int(forest.left[i]), int(forest.right[i])
+                if f in subset:
+                    return go(left if _goes_left(x[f], int(forest.decision[i]), forest.threshold[i]) else right)
+
+                def n(c: int, base: int = base, leaf: int = leaf) -> float:
+                    return float(forest.leaf_count[leaf + ~c] if c < 0 else forest.node_count[base + c])
+
+                return (n(left) * go(left) + n(right) * go(right)) / float(forest.node_count[i])
+
+            total += float(forest.value[leaf]) if forest.tree_nodes[t] == 0 else go(0)
+        return total
+
+    k = len(forest.features)
+    phi = np.zeros(k)
+    for j in range(k):
+        others = [i for i in range(k) if i != j]
+        for r in range(k):
+            for subset in combinations(others, r):
+                w = math.factorial(r) * math.factorial(k - r - 1) / math.factorial(k)
+                phi[j] += w * (value(set(subset) | {j}) - value(set(subset)))
+    return phi
+
+
 class TreeModelTest(unittest.TestCase):
+    def test_treeshap_is_exact(self) -> None:
+        forest = synthetic.random_forest(["a", "b", "c", "d", "e"], n_trees=6, depth=4, seed=11)
+        rows = np.random.default_rng(2).normal(0, 2, (6, 5))
+        rows[1, 2] = np.nan
+        rows[2, 0] = 0.0
+        for row in rows:
+            base, phi = explain_row(forest, row)
+            self.assertAlmostEqual(base + phi.sum(), predict_row(forest, row), places=12)
+            np.testing.assert_allclose(phi, shapley_by_enumeration(forest, row), atol=1e-12)
+            with tempfile.TemporaryDirectory() as tmp:          # counts survive the binary format
+                write_binary(forest, Path(tmp, "m.bin"))
+                np.testing.assert_array_equal(explain_row(read_binary(Path(tmp, "m.bin")), row)[1], phi)
+
+    def test_treeshap_matches_lightgbm(self) -> None:
+        try:
+            import lightgbm as lgb
+        except ImportError:
+            self.skipTest("LightGBM not installed")
+        rng = np.random.default_rng(4)
+        X = rng.normal(0, 1, (2000, 6))
+        X[rng.random(X.shape) < 0.1] = np.nan
+        X = X.astype(np.float32)                                   # as the pipeline feeds LightGBM
+        y = np.nan_to_num(X[:, 0]) * 2 + np.nan_to_num(X[:, 1]) * np.nan_to_num(X[:, 2]) + rng.normal(0, 0.1, 2000)
+        booster = lgb.train({"objective": "l1", "num_leaves": 15, "verbose": -1}, lgb.Dataset(X, y), 50)
+        forest = parse_lightgbm(booster.model_to_string())
+        want = booster.predict(X[:20], pred_contrib=True)
+        for row, expected in zip(X[:20], want, strict=True):
+            base, phi = explain_row(forest, row)
+            np.testing.assert_allclose(phi, expected[:-1], atol=1e-6)
+            self.assertAlmostEqual(base, expected[-1], places=6)
+
+    def test_explanation_groups_cover_every_feature_once(self) -> None:
+        from valia.model import EXPLAIN_GROUPS
+
+        members = [f for group in EXPLAIN_GROUPS.values() for f in group]
+        self.assertEqual(sorted(members), sorted(FEATURES))
+
     def test_lightgbm_text_and_decision_rules(self) -> None:
         forest = parse_lightgbm(LGB_TEXT)
         self.assertEqual(forest.features, ["a", "b"])
@@ -107,7 +184,7 @@ class TreeModelTest(unittest.TestCase):
             self.assertEqual(size, path.stat().st_size)
             back = read_binary(path)
             np.testing.assert_array_equal(predict(forest, X), predict(back, X))
-            self.assertEqual(json.loads(path.with_suffix(".json").read_text())["format"], "valia-trees/1")
+            self.assertEqual(json.loads(path.with_suffix(".json").read_text())["format"], "valia-trees/2")
 
 
 def build_market() -> tuple[pd.DataFrame, pd.Timestamp, pd.DataFrame]:
@@ -220,6 +297,14 @@ class ExportTest(unittest.TestCase):
         self.assertAlmostEqual(math.log(out["high"] / out["price"]), 0.2)       # Paris · Appartements
         self.assertEqual(out["anchor_source"], "knn_prior")
         self.assertLessEqual(len(out["comparables"]), 5)
+
+    def test_explanation_adds_up_to_the_estimate(self) -> None:
+        q = Query(48.857, 2.352, "A", 62, 3, citycode="75056", parcel=self.parcels["parcel"].iloc[0])
+        out = estimate(self.assets, q, with_explanation=True)
+        e = out["explanation"]
+        self.assertAlmostEqual(out["features"]["anchor"] + e["base"] + sum(e["groups"].values()), out["log_ppm2"],
+                               places=9)
+        self.assertEqual(set(e["groups"]), set(self.assets.meta["explain_groups"]))
 
     def test_user_corrections_replace_the_published_building(self) -> None:
         parcel = self.parcels["parcel"].iloc[0]

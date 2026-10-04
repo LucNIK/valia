@@ -51,6 +51,7 @@ import { readForest } from "./trees.js";
  * @property {Record<string, any>} accuracy
  * @property {string} source
  * @property {string[]} parcel_fields
+ * @property {Record<string, string[]>} explain_groups
  * @property {string | null} [buildings_source]
  * @typedef {{global_half_width_log: number, by_group: Record<string, number>}} Intervals
  */

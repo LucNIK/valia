@@ -38,6 +38,18 @@ FEATURES = [
     "commune_type_prior", "commune_type_n_log", "knn_prior", "knn_km", "knn_age", *ENRICH_COLUMNS,
     *BUILDING_COLUMNS,
 ]
+# How the explanation of an estimate is grouped for the app (every feature belongs to one group).
+EXPLAIN_GROUPS = {
+    "size": ["surface_log", "rooms", "m2_per_room"],
+    "type": ["is_house"],
+    "land": ["land_log"],
+    "building": [*BUILDING_COLUMNS],
+    "location": ["lat", "lon", "station_km"],
+    "date": ["months"],
+    "area": [f for f in FEATURES if f.endswith(("_prior", "_n_log")) or f.startswith("knn_")]
+            + ["anchor", "pop_log", "density_log", "density_grid", "equipment_level"],
+}
+
 # Most specific first: comparable sales, then same-type priors, then all-type priors.
 ANCHOR_CHAIN = ("knn_prior", "cell_type_prior", "cell_prior", "cell2_type_prior",
                 "commune_type_prior", "commune_prior")

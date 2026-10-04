@@ -173,6 +173,18 @@ houses (MdAPE 18.4 % → 15.8 %) and rural communes (20.4 % → 17.4 %), and the
 Run history (France, full model): MdAPE 16.2 % (run 1) → 15.7 % (run 2) → **13.9 %** (run 4);
 gain vs commune median −16.8 % → −18.9 % → **−26.7 %**.
 
+## Explanations (v1.0)
+
+- Each estimate is decomposed with path-dependent TreeSHAP (Lundberg et al., 2020) on the web model:
+  log price per m² = anchor + base + Σ contributions, where base is the average gap over the training
+  rows. The tree file stores the training row counts per node (`valia-trees/2`) for this purpose.
+- Exactness is tested three ways: against Shapley values computed by brute force over every subset of
+  features, against LightGBM's own `pred_contrib` (CI), and browser against Python on the reference
+  homes (to 10⁻⁹).
+- The app groups contributions into surface and rooms, type, land, building, precise location, date,
+  and area (neighbourhood prices and commune profile). They describe what the model learned from past
+  sales, not causal effects.
+
 ## Known limits
 
 - DVF has no floor, energy rating (DPE), view or condition: two identical flats in the same building

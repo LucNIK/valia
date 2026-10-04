@@ -60,6 +60,15 @@
         selon la surface, le nombre de pièces, le terrain, le bâtiment, la dynamique du quartier, la population et la densité
         de la commune et la distance à la gare la plus proche. Il est entraîné uniquement sur des ventes antérieures à celles qu'il prédit.</p>
 
+      <h2>Pourquoi ce prix</h2>
+      <p>Chaque estimation est décomposée avec <em>TreeSHAP</em>, la méthode de référence pour ce type de modèle&nbsp;:
+        partant du niveau de référence du quartier, elle attribue à chaque caractéristique (surface, bâtiment, terrain,
+        emplacement, date…) sa part exacte de l'écart, de sorte que les lignes se combinent pour redonner l'estimation.
+        Le calcul se fait dans votre navigateur et reproduit au millionième près celui du code Python.</p>
+      <p class="muted">Une contribution décrit ce que le modèle a appris des ventes passées, pas une relation de cause à effet&nbsp;:
+        «&nbsp;classe F&nbsp;: −5&nbsp;%&nbsp;» signifie que les logements comparables classés F se sont vendus
+        moins cher, pas qu'une rénovation rapporterait exactement 5&nbsp;%.</p>
+
       <h2>La fourchette</h2>
       <p>La fourchette est calibrée par <em>conformal prediction</em> sur des ventes que le modèle n'a pas vues&nbsp;:
         elle contient le prix réel environ 8 fois sur 10, avec une largeur propre à chaque type de zone et de bien.</p>

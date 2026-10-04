@@ -3,4 +3,4 @@
 
 """Valia — French property price estimation from public DVF data."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

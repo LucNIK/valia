@@ -247,19 +247,98 @@ function render(assets, out, type, where) {
   explain.textContent = weak
     ? "Il y a trop peu de ventes récentes autour de cette adresse : l'estimation part d'un niveau moyen " +
       "(commune, département ou France) et reste peu fiable."
-    : `Point de départ : ${sources[out.anchorSource]}. Le modèle ajuste ensuite ce niveau selon la surface, ` +
-      "le nombre de pièces, le terrain, la dynamique du quartier et la distance à une gare." +
+    : `Le niveau de référence part de ${sources[out.anchorSource]}. Chaque ligne indique de combien ce qui ` +
+      "distingue votre logement fait monter ou baisser le prix au m², d'après les ventes passées." +
       (accuracy ? ` Dans ce type de zone (${out.segment.toLowerCase()}), l'écart médian avec le prix de vente ` +
                   `réel a été de ${String(accuracy).replace(".", ",")} % lors du test sur ${assets.meta.accuracy.test_year}.` : "");
 
-  const b = out.building;
-  const parts = [b.dpe_class ? `classe énergie ${DPE_LETTERS[Number(b.dpe_class)]}` : "",
-                 b.year_built ? `construit en ${b.year_built}` : ""].filter(Boolean);
-  if (!weak && parts.length) explain.textContent += ` Bâtiment pris en compte : ${parts.join(", ")}.`;
-
+  renderWhy(assets, out, type);
   renderComparables(out.comparables, where);
   result.hidden = false;
   result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+/** Groups of meta.explain_groups, in plain words. */
+const GROUP_LABELS = /** @type {Record<string, string>} */ ({
+  size: "Surface et pièces", type: "Type de bien", land: "Terrain", building: "Bâtiment",
+  location: "Emplacement précis", date: "Date", area: "Quartier et commune",
+});
+const MIN_SHOWN = Math.log(1.005);          // effects under 0.5 % are grouped as "Autres facteurs"
+
+/**
+ * "Pourquoi ce prix": reference level of the area, then each group's effect, then the estimate.
+ * In log space the rows add up exactly; shown as percentages they multiply.
+ * @param {Assets} assets
+ * @param {Awaited<ReturnType<typeof estimate>>} out
+ * @param {"A" | "M"} type
+ */
+function renderWhy(assets, out, type) {
+  const f = out.features;
+  const e = out.explanation;
+  const b = out.building;
+  const pct = (/** @type {number} */ g) => {
+    const v = (Math.exp(g) - 1) * 100;
+    const r = Math.abs(v) < 10 ? Math.round(v * 10) / 10 : Math.round(v);
+    return `${r > 0 ? "+" : r < 0 ? "−" : ""}${String(Math.abs(r)).replace(".", ",")} %`;
+  };
+  const s = Math.exp(f.surface_log);
+  const details = /** @type {Record<string, string>} */ ({
+    size: `${Math.round(s)} m², ${f.rooms} pièce${f.rooms > 1 ? "s" : ""}`,
+    type: type === "M" ? "Maison" : "Appartement",
+    land: type === "M" && f.land_log > 0 ? `${Math.round(Math.expm1(f.land_log))} m²` : "Sans terrain",
+    building: [b.dpe_class ? `classe ${DPE_LETTERS[Number(b.dpe_class)]}` : "",
+               b.year_built ? `construit en ${b.year_built}` : "",
+               b.levels ? `${b.levels} niveau${Number(b.levels) > 1 ? "x" : ""}` : ""].filter(Boolean).join(" · ")
+              || "Non renseigné",
+    location: Number.isNaN(f.station_km) ? "Position exacte dans le quartier"
+      : `Position exacte, gare à ${fmt.distance(f.station_km)}`,
+    date: `Marché de ${fmt.month(assets.meta.now_month - 1)}`,
+    area: "Ventes voisines, dynamique et profil de la commune",
+  });
+
+  const shown = Object.entries(e.groups).filter(([, g]) => Math.abs(g) >= MIN_SHOWN)
+    .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+  const rest = Object.values(e.groups).filter((g) => Math.abs(g) < MIN_SHOWN).reduce((a, g) => a + g, 0);
+  const scale = Math.max(Math.log(1.1), ...shown.map(([, g]) => Math.abs(g)));
+
+  /**
+   * @param {string} label @param {string} detail @param {string} value @param {number | null} g
+   * @param {string} [cls]
+   */
+  const row = (label, detail, value, g, cls) => {
+    const li = document.createElement("li");
+    if (cls) li.className = cls;
+    const what = document.createElement("div");
+    what.className = "what";
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    const span = document.createElement("span");
+    span.textContent = detail;
+    what.append(strong, span);
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    if (g !== null) {
+      const i = document.createElement("i");
+      const w = Math.min(50, (Math.abs(g) / scale) * 50);
+      i.className = g < 0 ? "down" : "";
+      i.style.left = `${g < 0 ? 50 - w : 50}%`;
+      i.style.width = `${w}%`;
+      bar.append(i);
+    }
+    bar.setAttribute("aria-hidden", "true");
+    const val = document.createElement("div");
+    val.className = "val";
+    val.textContent = value;
+    li.append(what, bar, val);
+    return li;
+  };
+
+  const reference = Math.exp(f.anchor + e.base);
+  const items = [row("Niveau de référence", "Prix au m² d'un logement type ici", fmt.perM2(reference), null, "ref")];
+  for (const [name, g] of shown) items.push(row(GROUP_LABELS[name] || name, details[name] || "", pct(g), g));
+  if (Math.abs(rest) >= Math.log(1.001)) items.push(row("Autres facteurs", "Effets de moins de 0,5 % chacun", pct(rest), rest));
+  items.push(row("Votre estimation", "Prix au m²", fmt.perM2(out.priceM2), null, "total"));
+  $("why").replaceChildren(...items);
 }
 
 /**
