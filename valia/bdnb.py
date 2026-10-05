@@ -11,8 +11,6 @@ them. For every parcel holding dwellings we keep the building group with the mos
   year_built    construction year (land files, else the DPE's estimate)
   levels        number of storeys
   dwellings     number of dwellings
-  elevator      1 if the building has a lift
-  social_share  share of social housing among its dwellings
 
 The BDNB is published under the ODbL: any database built from it and published (the app's parcel
 files) is shared under the same licence, with attribution to the CSTB.
@@ -47,15 +45,13 @@ USER_AGENT = f"valia/{__version__} (+https://github.com/LucNIK/valia)"
 DPE_CLASSES = {c: i for i, c in enumerate("ABCDEFG", start=1)}
 TABLES = {
     "rel_batiment_groupe_parcelle": ["batiment_groupe_id", "parcelle_id"],
-    "batiment_groupe_ffo_bat": ["batiment_groupe_id", "annee_construction", "nb_niveau", "nb_log",
-                                "presence_ascenseur", "nb_log_soc"],
+    "batiment_groupe_ffo_bat": ["batiment_groupe_id", "annee_construction", "nb_niveau", "nb_log"],
     "batiment_groupe_dpe_representatif_logement": ["batiment_groupe_id", "classe_bilan_dpe",
                                                    "date_etablissement_dpe", "annee_construction_dpe"],
 }
-PARCEL_COLUMNS = ["parcel", "dpe_class", "dpe_date", "year_built", "levels", "dwellings", "elevator",
-                  "social_share"]
+PARCEL_COLUMNS = ["parcel", "dpe_class", "dpe_date", "year_built", "levels", "dwellings"]
 # Model inputs derived from them (see attach())
-BUILDING_COLUMNS = ["dpe_class", "year_built", "levels", "dwellings_log", "elevator", "social_share"]
+BUILDING_COLUMNS = ["dpe_class", "year_built", "levels", "dwellings_log"]
 MIN_YEAR, MAX_YEAR = 1000, 2030
 
 
@@ -83,11 +79,6 @@ def _read_table(archive: zipfile.ZipFile, table: str, wanted: list[str]) -> pd.D
                            low_memory=False)
 
 
-def _bool(s: pd.Series) -> pd.Series:
-    return s.astype(str).str.strip().str.lower().map(
-        {"t": 1.0, "true": 1.0, "1": 1.0, "oui": 1.0, "f": 0.0, "false": 0.0, "0": 0.0, "non": 0.0})
-
-
 def _num(s: pd.Series | None, index: pd.Index) -> pd.Series:
     if s is None:
         return pd.Series(np.nan, index=index)
@@ -113,9 +104,6 @@ def parcels_from_tables(rel: pd.DataFrame, ffo: pd.DataFrame | None, dpe: pd.Dat
     g["year_built"] = valid_year(_num(groups.get("annee_construction"), idx)).fillna(
         valid_year(_num(groups.get("annee_construction_dpe"), idx)))
     g["levels"] = _num(groups.get("nb_niveau"), idx).where(lambda v: v.between(1, 60))
-    g["elevator"] = _bool(groups["presence_ascenseur"]) if "presence_ascenseur" in groups else np.nan
-    social = _num(groups.get("nb_log_soc"), idx)
-    g["social_share"] = (social / g["dwellings"].where(g["dwellings"] > 0)).clip(0, 1).round(2)
     cls = groups["classe_bilan_dpe"].str.strip().str.upper() if "classe_bilan_dpe" in groups else None
     g["dpe_class"] = cls.map(DPE_CLASSES) if cls is not None else np.nan
     date = groups.get("date_etablissement_dpe")
@@ -198,8 +186,6 @@ def attach(sales: pd.DataFrame, parcels: pd.DataFrame | None) -> pd.DataFrame:
     out["year_built"] = keys.map(info["year_built"])
     out["levels"] = keys.map(info["levels"])
     out["dwellings_log"] = np.log1p(keys.map(info["dwellings"]))
-    out["elevator"] = keys.map(info["elevator"])
-    out["social_share"] = keys.map(info["social_share"])
     return out
 
 
@@ -213,8 +199,7 @@ def building_features(entry: dict | None) -> dict[str, float]:
 
     dwellings = get("dwellings")
     return {"dpe_class": get("dpe_class"), "year_built": get("year_built"), "levels": get("levels"),
-            "dwellings_log": math.log1p(dwellings) if not math.isnan(dwellings) else math.nan,
-            "elevator": get("elevator"), "social_share": get("social_share")}
+            "dwellings_log": math.log1p(dwellings) if not math.isnan(dwellings) else math.nan}
 
 
 def coverage(frame: pd.DataFrame) -> dict:

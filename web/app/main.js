@@ -155,8 +155,8 @@ async function findBuilding(where) {
     dpe.value = entry.dpe_class ? String(entry.dpe_class) : "";
     year.value = entry.year_built ? String(entry.year_built) : "";
     const facts = [entry.levels ? `${entry.levels} niveau${entry.levels > 1 ? "x" : ""}` : "",
-                   entry.dwellings ? `${entry.dwellings} logement${entry.dwellings > 1 ? "s" : ""}` : "",
-                   entry.elevator ? "ascenseur" : ""].filter(Boolean).join(", ");
+                   entry.dwellings ? `${entry.dwellings} logement${entry.dwellings > 1 ? "s" : ""}` : ""]
+      .filter(Boolean).join(", ");
     hint.textContent = `Trouvé dans la BDNB${facts ? ` (${facts})` : ""}. Corrigez si votre logement diffère, ` +
       "par exemple après une rénovation.";
     hint.className = "hint found";

@@ -136,8 +136,8 @@ The same check runs on a synthetic market in CI on every push.
   `batiment_groupe_ffo_bat`, `batiment_groupe_dpe_representatif_logement`.
 - Join: the sale's cadastral parcel (DVF `id_parcelle`) → building groups on that parcel → the one
   with the most dwellings.
-- New inputs: DPE class (A=1 … G=7), construction year, storeys, log number of dwellings, lift,
-  share of social housing.
+- New inputs: DPE class (A=1 … G=7), construction year, storeys, log number of dwellings. (Lift and
+  social-housing share were tried in run 4 but are not in the open BDNB tables; removed in v0.8.1.)
 - Leakage: a DPE dated after the sale is set to missing for that sale (a renovation after the sale
   must not explain its price). The other attributes describe the building itself and are static.
 - In the app: the address is matched to its parcel (IGN reverse geocoding) and the building data
@@ -184,6 +184,12 @@ gain vs commune median −16.8 % → −18.9 % → **−26.7 %**.
 - The app groups contributions into surface and rooms, type, land, building, precise location, date,
   and area (neighbourhood prices and commune profile). They describe what the model learned from past
   sales, not causal effects.
+
+## Published size (v0.8.1)
+
+The app's building files moved from JSON to a compact text format (`valia-parcels/2`, about 15 bytes
+per parcel instead of 37): 21.2 million parcels take 325 MB instead of 792 MB, and the whole site
+about 430 MB, well under GitHub Pages' 1 GB limit.
 
 ## Known limits
 

@@ -12,7 +12,7 @@ so estimation runs in the browser with no server:
   data/trends.json               12-month median price per m², quarter by quarter, per département and France
   data/stations.json             railway stations, for the distance feature
   data/communes/<dep>.json       per commune: segment, static median, profile, recent priors
-  data/parcels/<code>.json       per parcel holding dwellings: building data from the BDNB (ODbL)
+  data/parcels/<code>.txt        per parcel holding dwellings: building data from the BDNB (ODbL)
   data/tiles/index.json          which tiles exist: {row: [col, ...]}
   data/tiles/<row>_<col>.json    per ~2.2 km tile: recent priors of its ~550 m cells and the sales of
                                  the last 24 months (comparables and nearest-neighbour features)
@@ -37,7 +37,8 @@ from .features import COARSE_FACTOR, KNN_K, KNN_LOOKBACK_MONTHS, cell_id
 from .model import EXPLAIN_GROUPS
 
 FORMAT = "valia-web/2"
-PARCEL_FIELDS = ["dpe_class", "year_built", "levels", "dwellings", "elevator", "social_share"]
+PARCEL_FIELDS = ["dpe_class", "year_built", "levels", "dwellings"]
+PARCEL_FORMAT = "valia-parcels/2"
 COORD_DECIMALS = 3
 TYPES = ("A", "M")
 
@@ -232,8 +233,13 @@ def export_assets(sales: pd.DataFrame, forest, anchor: dict, intervals: dict, se
 
 
 def export_parcels(parcels: pd.DataFrame | None, data: Path) -> dict:
-    """data/parcels/<5 first characters>.json: {rest of the parcel id: [PARCEL_FIELDS values]}.
+    """data/parcels/<5 first characters>.txt, one file per commune (cadastral code), compact text:
 
+        valia-parcels/2
+        #000AB                 prefix (3) + section (2) of the parcels below
+        0012,5,1870,7,13       number (4), then PARCEL_FIELDS; empty when unknown
+
+    About 15 bytes per parcel instead of ~37 in JSON: the whole of France stays a few hundred MB.
     This is a database derived from the BDNB, published under the ODbL like its source."""
     folder = data / "parcels"
     folder.mkdir(parents=True, exist_ok=True)
@@ -241,22 +247,46 @@ def export_parcels(parcels: pd.DataFrame | None, data: Path) -> dict:
         (folder / "index.json").write_text("[]")
         return {"parcels": 0, "parcel_bytes": 0}
     frame = parcels.drop_duplicates("parcel").copy()
-    frame = frame[frame["parcel"].astype(str).str.len() == 14]
+    frame = frame[frame["parcel"].astype(str).str.len() == 14].sort_values("parcel")
     frame["code"] = frame["parcel"].str.slice(0, 5)
-    frame["key"] = frame["parcel"].str.slice(5)
+    frame["head"] = frame["parcel"].str.slice(5, 10)
+    frame["number"] = frame["parcel"].str.slice(10)
+    for col in PARCEL_FIELDS:
+        frame[col] = pd.to_numeric(frame[col], errors="coerce").round()
     size = 0
     codes = []
     for code, part in frame.groupby("code", sort=True):
-        rows = {}
-        for row in part[["key", *PARCEL_FIELDS]].itertuples(index=False):
-            values = [_num(v, 2) for v in row[1:]]
-            rows[row[0]] = [int(v) if v is not None and float(v).is_integer() else v for v in values]
-        text = json.dumps(rows, separators=(",", ":"))
+        lines = [PARCEL_FORMAT]
+        head = None
+        for row in part[["head", "number", *PARCEL_FIELDS]].itertuples(index=False):
+            if row[0] != head:
+                head = row[0]
+                lines.append(f"#{head}")
+            values = ["" if pd.isna(v) else str(int(v)) for v in row[2:]]
+            lines.append(",".join([row[1], *values]).rstrip(","))
+        text = "\n".join(lines) + "\n"
         size += len(text)
-        (folder / f"{code}.json").write_text(text)
+        (folder / f"{code}.txt").write_text(text)
         codes.append(str(code))
     (folder / "index.json").write_text(json.dumps(codes, separators=(",", ":")))
     (folder / "LICENCE.txt").write_text(
         "Données dérivées de la BDNB (CSTB), publiées sous licence ODbL 1.0 : "
         "https://opendatacommons.org/licenses/odbl/1-0/\n")
     return {"parcels": len(frame), "parcel_bytes": size}
+
+
+def read_parcel_text(text: str, n_fields: int) -> dict[str, list]:
+    """Inverse of export_parcels for one file: {prefix+section+number: [values or None]}."""
+    lines = text.splitlines()
+    if not lines or lines[0] != PARCEL_FORMAT:
+        raise ValueError("not a valia parcel file")
+    out: dict[str, list] = {}
+    head = ""
+    for line in lines[1:]:
+        if line.startswith("#"):
+            head = line[1:]
+        elif line:
+            parts = line.split(",")
+            values = [int(v) if v else None for v in parts[1:]]
+            out[head + parts[0]] = values + [None] * (n_fields - len(values))
+    return out

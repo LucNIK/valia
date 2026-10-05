@@ -23,7 +23,7 @@ A price, a calibrated range, the reasons behind it and the closest real sales �
 | **v0.1** | DVF pipeline: download, cleaning, leakage-free neighbourhood features, reference estimators | Reproducible dataset in one command, tests green | **Done** — 4.26 M sales, see the [model card](docs/model-card.md) |
 | **v0.2** | Open-data enrichment, gradient-boosted model anchored on comparable sales, conformal intervals per segment | Beat both references in every segment; 80 % intervals cover 78–82 % of prices (target −25 % vs commune median) | **Done** — −18.9 % error vs commune median, better in every segment, 81.3 % coverage ✅ |
 | **v0.3** | Web app: address, estimate, range, 5 comparable sales, Method page, dark and light themes | Browser and Python agree on 1 000 homes | **Done** — browser = Python on 1,000 real homes |
-| **v0.4** | Building data (BDNB): energy class, construction year, storeys, dwellings, lift, social housing — pre-filled in the app and correctable | Close the gap to −25 % vs commune median | **Done** — −26.7 % error vs commune median (web model −25.6 %), 13.9 % median error, 81.5 % coverage ✅ |
+| **v0.4** | Building data (BDNB): energy class, construction year, storeys, dwellings — pre-filled in the app and correctable | Close the gap to −25 % vs commune median | **Done** — −26.7 % error vs commune median (web model −25.6 %), 13.9 % median error, 81.5 % coverage ✅ |
 | v1.0 | Why this price (TreeSHAP, in the browser) · local trend · comparison · neighbourhood map · immersive 3D map · installable offline app | Public demo and model card | **In progress** — explanations, local trend, comparison and neighbourhood map done |
 | v1.x | Accounts, saved homes, history, price alerts and notifications | — | Later |
 
@@ -78,7 +78,7 @@ Options: `--years 2021-2025`, `--departements all` or `75,69,13`, `--test-year 2
    ("Communes et villes de France", data.gouv.fr), and the distance to the nearest railway station
    (SNCF). Optional by design: if a source is unavailable, its columns stay empty and the model still runs.
 5. **Buildings** — the [BDNB](https://bdnb.io) (CSTB) links each cadastral parcel to its buildings: energy
-   class of a representative dwelling, construction year, storeys, dwellings, lift, share of social housing.
+   class of a representative dwelling, construction year, storeys and number of dwellings.
    Joined to each sale by its parcel; a DPE made after a sale is never used for that sale.
 6. **Reference estimators** — the commune median and the neighbourhood prior, measured on the latest
    full year. The model must beat the commune median by 25 %.

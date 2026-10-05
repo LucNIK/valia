@@ -7,10 +7,11 @@ import { readForest } from "./trees.js";
 
 /**
  * Reads files under the assets root. The browser uses fetch(); the tests read from disk.
- * `json` resolves to null when the file does not exist.
+ * `json` and `text` resolve to null when the file does not exist.
  * @typedef {object} Loader
  * @property {(path: string) => Promise<any>} json
  * @property {(path: string) => Promise<ArrayBuffer>} binary
+ * @property {(path: string) => Promise<string | null>} text
  */
 
 /**
@@ -83,7 +84,7 @@ export class Assets {
     this.features = features;
     this.parcelCodes = new Set(parcelCodes);
     this.trends = trends;
-    /** @type {Map<string, Promise<Record<string, (number | null)[]>>>} */
+    /** @type {Map<string, Promise<Map<string, (number | null)[]>>>} */
     this.parcels = new Map();
     /** @type {Map<string, Promise<Tile | null>>} */
     this.tiles = new Map();
@@ -148,17 +149,45 @@ export async function parcelOf(assets, parcelId) {
   if (parcelId.length !== 14 || !assets.parcelCodes.has(code)) return null;
   let p = assets.parcels.get(code);
   if (!p) {
-    p = assets.loader.json(`data/parcels/${code}.json`).then((x) => x || {});
+    const n = assets.meta.parcel_fields.length;
+    p = assets.loader.text(`data/parcels/${code}.txt`).then((t) => readParcelText(t || "", n));
     assets.parcels.set(code, p);
   }
-  const all = await p;
-  const key = parcelId.slice(5);
-  if (!Object.hasOwn(all, key)) return null;
-  const values = all[key];
+  const values = (await p).get(parcelId.slice(5));
+  if (!values) return null;
   /** @type {Record<string, number | null>} */
   const entry = {};
   assets.meta.parcel_fields.forEach((name, i) => { entry[name] = values[i]; });
   return entry;
+}
+
+/**
+ * Reads one compact parcel file (see export_parcels() in export.py):
+ * "valia-parcels/2", then "#" + prefix + section, then "number,value,value,…" lines.
+ * @param {string} text
+ * @param {number} nFields
+ * @returns {Map<string, (number | null)[]>}
+ */
+export function readParcelText(text, nFields) {
+  /** @type {Map<string, (number | null)[]>} */
+  const out = new Map();
+  const lines = text.split("\n");
+  if (lines[0] !== "valia-parcels/2") return out;
+  let head = "";
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    if (line[0] === "#") {
+      head = line.slice(1);
+      continue;
+    }
+    const parts = line.split(",");
+    /** @type {(number | null)[]} */
+    const values = [];
+    for (let j = 1; j <= nFields; j++) values.push(parts[j] ? Number(parts[j]) : null);
+    out.set(head + parts[0], values);
+  }
+  return out;
 }
 
 /**
@@ -178,6 +207,12 @@ export function httpLoader(base) {
       const r = await fetch(new URL(path, base));
       if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
       return r.arrayBuffer();
+    },
+    async text(path) {
+      const r = await fetch(new URL(path, base));
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+      return r.text();
     },
   };
 }

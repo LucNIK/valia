@@ -63,3 +63,12 @@ test("parcel ids from the address service", async () => {
                "010040120A0123");
   assert.equal(parcelId({ section: "A" }), null);
 });
+
+test("compact parcel files", async () => {
+  const { readParcelText } = await import("../app/assets.js");
+  const parcels = readParcelText("valia-parcels/2\n#000AB\n0012,5,1870,7,13\n0013,,1900,3,1\n#123AC\n0001,2,,,4\n", 4);
+  assert.deepEqual(parcels.get("000AB0012"), [5, 1870, 7, 13]);
+  assert.deepEqual(parcels.get("000AB0013"), [null, 1900, 3, 1]);
+  assert.deepEqual(parcels.get("123AC0001"), [2, null, null, 4]);
+  assert.equal(readParcelText("something else", 4).size, 0);
+});

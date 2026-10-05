@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .bdnb import building_features
+from .export import read_parcel_text
 from .treemodel import Forest, explain_row, predict_row, read_binary
 
 EARTH_RADIUS_KM = 6_371.0
@@ -104,7 +105,8 @@ class Assets:
         if code not in self.parcel_codes:
             return {}
         if code not in self._parcels:
-            self._parcels[code] = json.loads((self.root / "data" / "parcels" / f"{code}.json").read_text())
+            text = (self.root / "data" / "parcels" / f"{code}.txt").read_text()
+            self._parcels[code] = read_parcel_text(text, len(self.meta["parcel_fields"]))
         return self._parcels[code]
 
     def parcel(self, parcel_id: str) -> dict | None:

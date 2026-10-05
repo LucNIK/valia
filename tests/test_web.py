@@ -348,8 +348,7 @@ class BuildingTest(unittest.TestCase):
                             "parcelle_id": ["75104000AB0001", "75104000AB0001", "75104000AB0002", "75104000AB0003"]})
         ffo = pd.DataFrame({"batiment_groupe_id": ["g1", "g2", "g3", "g4"],
                             "annee_construction": ["1880", "1975", "0", ""],
-                            "nb_niveau": ["6", "12", "2", "1"], "nb_log": ["20", "3", "1", "0"],
-                            "presence_ascenseur": ["f", "t", "f", "f"], "nb_log_soc": ["0", "3", "0", "0"]})
+                            "nb_niveau": ["6", "12", "2", "1"], "nb_log": ["20", "3", "1", "0"]})
         dpe = pd.DataFrame({"batiment_groupe_id": ["g1", "g3"], "classe_bilan_dpe": ["D", "N"],
                             "date_etablissement_dpe": ["2023-05-02 00:00:00", "2022-01-01"],
                             "annee_construction_dpe": ["1890", "1960"]})
@@ -358,7 +357,6 @@ class BuildingTest(unittest.TestCase):
         first = out.loc["75104000AB0001"]
         got = (first["dpe_class"], first["year_built"], first["levels"], first["dwellings"])
         self.assertEqual(got, (4, 1880, 6, 20))
-        self.assertEqual(first["elevator"], 0)
         second = out.loc["75104000AB0002"]
         self.assertTrue(math.isnan(second["dpe_class"]))                 # "N" is not a class
         self.assertEqual(second["year_built"], 1960)                     # 0 is no year: the DPE's estimate is used
@@ -384,13 +382,33 @@ class BuildingTest(unittest.TestCase):
         sales = pd.DataFrame({"parcel": ["P1", "P1", "P2"],
                               "date": pd.to_datetime(["2022-01-01", "2024-01-01", "2024-01-01"])})
         parcels = pd.DataFrame({"parcel": ["P1"], "dpe_class": [6.0], "dpe_date": pd.to_datetime(["2023-03-01"]),
-                                "year_built": [1950.0], "levels": [3.0], "dwellings": [9.0], "elevator": [1.0],
-                                "social_share": [0.0]})
+                                "year_built": [1950.0], "levels": [3.0], "dwellings": [9.0]})
         out = bdnb.attach(sales, parcels)
         self.assertTrue(math.isnan(out["dpe_class"].iloc[0]))
         self.assertEqual(out["dpe_class"].iloc[1], 6)
         self.assertEqual(out["year_built"].iloc[0], 1950)                # static facts are always known
         self.assertTrue(out.iloc[2][bdnb.BUILDING_COLUMNS].isna().all())
+
+
+class ParcelFileTest(unittest.TestCase):
+    def test_compact_parcel_files_round_trip(self) -> None:
+        from valia.export import PARCEL_FIELDS, export_parcels, read_parcel_text
+
+        parcels = pd.DataFrame({
+            "parcel": ["75104000AB0012", "75104000AB0013", "75104123AC0001", "75105000ZZ0001"],
+            "dpe_class": [5.0, np.nan, 2.0, np.nan], "year_built": [1870.0, 1900.0, np.nan, np.nan],
+            "levels": [7.0, 3.0, np.nan, 2.0], "dwellings": [13.0, 1.0, 4.0, np.nan]})
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = export_parcels(parcels, Path(tmp))
+            self.assertEqual(summary["parcels"], 4)
+            text = Path(tmp, "parcels", "75104.txt").read_text()
+            self.assertEqual(text, "valia-parcels/2\n#000AB\n0012,5,1870,7,13\n0013,,1900,3,1\n#123AC\n0001,2,,,4\n")
+            back = read_parcel_text(text, len(PARCEL_FIELDS))
+            self.assertEqual(back["000AB0012"], [5, 1870, 7, 13])
+            self.assertEqual(back["123AC0001"], [2, None, None, 4])
+            self.assertEqual(read_parcel_text(Path(tmp, "parcels", "75105.txt").read_text(), 4)["000ZZ0001"],
+                             [None, None, 2, None])
+            self.assertEqual(json.loads(Path(tmp, "parcels", "index.json").read_text()), ["75104", "75105"])
 
 
 class HelpersTest(unittest.TestCase):

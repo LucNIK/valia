@@ -144,6 +144,4 @@ def bdnb_parcels(sales: pd.DataFrame, seed: int = 5) -> pd.DataFrame:
         "year_built": np.where(rng.random(n) < 0.9, rng.integers(1850, 2024, n), np.nan),
         "levels": rng.integers(1, 9, n).astype(float),
         "dwellings": rng.integers(1, 80, n).astype(float),
-        "elevator": np.where(rng.random(n) < 0.7, rng.integers(0, 2, n), np.nan),
-        "social_share": np.round(rng.random(n) * 0.5, 2),
     })

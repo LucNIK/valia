@@ -136,8 +136,7 @@ export function buildingFeatures(entry) {
   const get = (key) => num(entry[key]);
   const dwellings = get("dwellings");
   return { dpe_class: get("dpe_class"), year_built: get("year_built"), levels: get("levels"),
-           dwellings_log: Number.isNaN(dwellings) ? NaN : Math.log1p(dwellings),
-           elevator: get("elevator"), social_share: get("social_share") };
+           dwellings_log: Number.isNaN(dwellings) ? NaN : Math.log1p(dwellings) };
 }
 
 const ANCHOR_CHAIN = ["knn_prior", "cell_type_prior", "cell_prior", "cell2_type_prior",

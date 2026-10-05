@@ -20,6 +20,14 @@ export function fsLoader(root) {
         throw err;
       }
     },
+    async text(path) {
+      try {
+        return await readFile(join(root, path), "utf8");
+      } catch (err) {
+        if (/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT") return null;
+        throw err;
+      }
+    },
     async binary(path) {
       const b = await readFile(join(root, path));
       return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
